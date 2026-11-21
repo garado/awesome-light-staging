@@ -1,0 +1,8 @@
+/**
+ * Bundled by jsDelivr using Rollup v4.62.2 and esbuild v0.28.1.
+ * Original file: /npm/@tiptap/extension-italic@2.2.4/dist/index.js
+ *
+ * Do NOT use SRI with dynamically generated files! More information: https://www.jsdelivr.com/using-sri-with-dynamic-files
+ */
+import{Mark as u,markPasteRule as e,markInputRule as r,mergeAttributes as d}from"/vendor/tiptap/npm/@tiptap/core@2.2.4.mjs";const s=/(?:^|\s)((?:\*)((?:[^*]+))(?:\*))$/,n=/(?:^|\s)((?:\*)((?:[^*]+))(?:\*))/g,a=/(?:^|\s)((?:_)((?:[^_]+))(?:_))$/,i=/(?:^|\s)((?:_)((?:[^_]+))(?:_))/g,o=u.create({name:"italic",addOptions(){return{HTMLAttributes:{}}},parseHTML(){return[{tag:"em"},{tag:"i",getAttrs:t=>t.style.fontStyle!=="normal"&&null},{style:"font-style=italic"}]},renderHTML({HTMLAttributes:t}){return["em",d(this.options.HTMLAttributes,t),0]},addCommands(){return{setItalic:()=>({commands:t})=>t.setMark(this.name),toggleItalic:()=>({commands:t})=>t.toggleMark(this.name),unsetItalic:()=>({commands:t})=>t.unsetMark(this.name)}},addKeyboardShortcuts(){return{"Mod-i":()=>this.editor.commands.toggleItalic(),"Mod-I":()=>this.editor.commands.toggleItalic()}},addInputRules(){return[r({find:s,type:this.type}),r({find:a,type:this.type})]},addPasteRules(){return[e({find:n,type:this.type}),e({find:i,type:this.type})]}});export{o as Italic,o as default,s as starInputRegex,n as starPasteRegex,a as underscoreInputRegex,i as underscorePasteRegex};
+//# sourceMappingURL=/sm/51e10db4e3b04f069b794e9a7ed7b69515e64fe06997a31a98db2f630aca839a.map

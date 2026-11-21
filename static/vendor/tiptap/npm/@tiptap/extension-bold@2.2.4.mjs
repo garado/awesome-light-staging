@@ -1,0 +1,8 @@
+/**
+ * Bundled by jsDelivr using Rollup v4.62.2 and esbuild v0.28.1.
+ * Original file: /npm/@tiptap/extension-bold@2.2.4/dist/index.js
+ *
+ * Do NOT use SRI with dynamically generated files! More information: https://www.jsdelivr.com/using-sri-with-dynamic-files
+ */
+import{Mark as u,markPasteRule as e,markInputRule as r,mergeAttributes as i}from"/vendor/tiptap/npm/@tiptap/core@2.2.4.mjs";const s=/(?:^|\s)((?:\*\*)((?:[^*]+))(?:\*\*))$/,n=/(?:^|\s)((?:\*\*)((?:[^*]+))(?:\*\*))/g,o=/(?:^|\s)((?:__)((?:[^__]+))(?:__))$/,d=/(?:^|\s)((?:__)((?:[^__]+))(?:__))/g,a=u.create({name:"bold",addOptions(){return{HTMLAttributes:{}}},parseHTML(){return[{tag:"strong"},{tag:"b",getAttrs:t=>t.style.fontWeight!=="normal"&&null},{style:"font-weight",getAttrs:t=>/^(bold(er)?|[5-9]\d{2,})$/.test(t)&&null}]},renderHTML({HTMLAttributes:t}){return["strong",i(this.options.HTMLAttributes,t),0]},addCommands(){return{setBold:()=>({commands:t})=>t.setMark(this.name),toggleBold:()=>({commands:t})=>t.toggleMark(this.name),unsetBold:()=>({commands:t})=>t.unsetMark(this.name)}},addKeyboardShortcuts(){return{"Mod-b":()=>this.editor.commands.toggleBold(),"Mod-B":()=>this.editor.commands.toggleBold()}},addInputRules(){return[r({find:s,type:this.type}),r({find:o,type:this.type})]},addPasteRules(){return[e({find:n,type:this.type}),e({find:d,type:this.type})]}});export{a as Bold,a as default,s as starInputRegex,n as starPasteRegex,o as underscoreInputRegex,d as underscorePasteRegex};
+//# sourceMappingURL=/sm/8b2b29f84c57a8449a859044ff41d915c14df11077d8c9da6688388354590f80.map

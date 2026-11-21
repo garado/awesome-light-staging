@@ -502,28 +502,28 @@
   // same class the real app page uses to render descriptions, so typing
   // **bold**/# heading/- list (Tiptap's built-in input rules, not hand-rolled
   // caret math) produces something that already looks like the final page.
-  // Loaded via dynamic import since there's no bundler in this project and
-  // Tiptap doesn't ship a single-file browser build the way Toast UI did.
+  //
+  // Vendored locally under static/vendor/tiptap/ (see tools/vendor-tiptap.pl)
+  // instead of loaded live from a CDN - jsDelivr resolved @tiptap/core@2.2.4
+  // consistently across all four packages (the version tiptap-markdown
+  // itself depends on), so the whole resolved dependency graph (68 files)
+  // was crawled once and rewritten to local .mjs files with local cross-
+  // imports. GitHub Pages serves .mjs as a proper JS MIME type, unlike
+  // jsDelivr/esm.sh's extensionless "+esm" URLs, which it would've served
+  // as the wrong content-type if mirrored verbatim.
 
   var longDescEditor = null;
   var longDescFallback = null; // plain <textarea>, used only if Tiptap fails to load
   var pendingLongDescMarkdown = null;
   var LONG_DESC_PLACEHOLDER = "Longer description to show in the popup. If left blank, it reuses the one-sentence summary.";
-
-  // jsDelivr, not esm.sh: it resolves each package's dependency versions
-  // deterministically at build time (no range-guessing across requests), so
-  // all four packages land on the exact same @tiptap/core without needing
-  // esm.sh's ?deps= override hack. 2.2.4 (not latest) because that's the
-  // @tiptap/core version tiptap-markdown itself actually resolves to.
-  var TIPTAP_CORE_VERSION = "2.2.4";
-  var MARKDOWN_EXT_VERSION = "0.8.10";
+  var TIPTAP_VENDOR = "/vendor/tiptap/npm/";
 
   function loadTiptapModules() {
     return Promise.all([
-      import("https://cdn.jsdelivr.net/npm/@tiptap/core@" + TIPTAP_CORE_VERSION + "/+esm"),
-      import("https://cdn.jsdelivr.net/npm/@tiptap/starter-kit@" + TIPTAP_CORE_VERSION + "/+esm"),
-      import("https://cdn.jsdelivr.net/npm/@tiptap/extension-placeholder@" + TIPTAP_CORE_VERSION + "/+esm"),
-      import("https://cdn.jsdelivr.net/npm/tiptap-markdown@" + MARKDOWN_EXT_VERSION + "/+esm"),
+      import(TIPTAP_VENDOR + "@tiptap/core@2.2.4.mjs"),
+      import(TIPTAP_VENDOR + "@tiptap/starter-kit@2.2.4.mjs"),
+      import(TIPTAP_VENDOR + "@tiptap/extension-placeholder@2.2.4.mjs"),
+      import(TIPTAP_VENDOR + "tiptap-markdown@0.8.10.mjs"),
     ]);
   }
 
