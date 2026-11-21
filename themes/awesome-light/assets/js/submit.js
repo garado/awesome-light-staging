@@ -156,6 +156,8 @@
 
         return ghFetch("/repos/" + parsed.owner + "/" + parsed.repo + "/readme").then(function(readme) {
           var text = atob(readme.content.replace(/\n/g, ""));
+          var readmeDir = readme.path.replace(/\/[^/]*$/, "");
+          if (readmeDir === readme.path) readmeDir = ""; // README is at repo root, no directory prefix
           var found = [];
           [MD_IMAGE_RE, IMG_TAG_RE].forEach(function(re) {
             var m;
@@ -165,7 +167,7 @@
             .filter(function(u) { return !BADGE_RE.test(u); })
             .map(function(u) {
               if (/^https?:\/\//.test(u)) return u;
-              var cleanPath = u.replace(/^\.?\//, "");
+              var cleanPath = (readmeDir ? readmeDir + "/" : "") + u.replace(/^\.?\//, "");
               return "https://raw.githubusercontent.com/" + parsed.owner + "/" + parsed.repo + "/" + repoData.default_branch + "/" + cleanPath;
             })
             .filter(function(u, i, arr) { return arr.indexOf(u) === i; })
