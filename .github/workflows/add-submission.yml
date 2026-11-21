@@ -278,12 +278,17 @@ jobs:
               tree: treeEntries,
             });
 
+            // Credit the submitter when merging instead of the bot
+            const submitter = context.payload.issue.user;
+            const submitterEmail = `${submitter.id}+${submitter.login}@users.noreply.github.com`;
+
             const { data: newCommit } = await github.rest.git.createCommit({
               owner: context.repo.owner,
               repo: context.repo.repo,
               message: isUpdate ? `Update ${name}` : `Add ${name} to the list`,
               tree: newTree.sha,
               parents: [mainRef.object.sha],
+              author: { name: submitter.login, email: submitterEmail, date: new Date().toISOString() },
             });
 
             await github.rest.git.createRef({
