@@ -1,0 +1,37 @@
+baseURL = "https://awesome-light-staging.garado.dev/"
+languageCode = "en-us"
+title = "awesome-light (staging)"
+theme = "awesome-light"
+
+enableRobotsTXT = true
+
+[frontmatter]
+  date = ["date_added", "date", ":default"]
+  lastmod = [":git", "lastmod", "date", ":fileModTime"]
+
+[params]
+  description = "Community-developed apps and tools for the Light Phone."
+  bg = "#464646"
+  githubRepo = "https://github.com/garado/awesome-light-staging"
+  githubBranch = "main"
+
+# Registry of maintainers.
+[params.maintainers]
+  sirbloodysabbath = "https://github.com/sirbloodysabbath"
+  garado = "https://garado.dev"
+
+[markup.goldmark.renderer]
+  unsafe = true
+
+[imaging]
+  resampleFilter = "Lanczos"
+
+[security]
+  [security.funcs]
+    getenv = ["^GITHUB_TOKEN$"]
+  [security.http]
+    urls = ["^https://"]
+
+[caches]
+  [caches.getresource]
+    maxAge = "6h"
