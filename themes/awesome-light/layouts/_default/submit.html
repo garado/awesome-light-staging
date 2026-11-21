@@ -13,6 +13,18 @@
   <p id="signed-out-hint" class="imf-hint">This uses read-only permissions (<code>public_repo</code> scope) to open and edit a submission issue as you.<br>It does not touch anything else on your account.</p>
 
   <div id="signed-in" style="display:none; align-self:stretch;">
+    <div class="modal-meta-row submit-modal" id="repo-url-row">
+      <span>Repo URL:</span>
+      <input id="repo-url-input" class="modal-meta-value submit-input submit-input--inline submit-input--wide" placeholder="https://github.com/username/app-name" autocomplete="off">
+      <button type="button" id="fetch-btn" class="modal-meta-link">fetch &#8635;</button>
+    </div>
+    <p class="imf-hint" id="fetch-status"></p>
+
+    <div class="modal-meta-row submit-modal" id="summary-row">
+      <span>Summary:</span>
+      <input type="text" id="description-input" class="submit-input submit-input--inline submit-input--wide" placeholder="One-sentence description to show in the list view">
+    </div>
+
     <div class="modal submit-modal">
       <div>
         <input id="name-input" class="modal-title submit-input submit-input--title" placeholder="App name" autocomplete="off">
@@ -23,44 +35,44 @@
 
       <div class="modal-content">
         <div class="modal-meta-row">
-          <span class="modal-meta-label">category</span>
+          <span class="modal-meta-label">categories</span>
           <select id="category-input" class="modal-meta-value submit-input submit-input--inline">
-            <option value="">choose one</option>
-            <option>Communication</option>
-            <option>Companion Tools</option>
-            <option>Entertainment</option>
-            <option>Health &amp; Wellness</option>
-            <option>Keyboard</option>
-            <option>Launchers</option>
-            <option>Music/Audio</option>
-            <option>Navigation</option>
-            <option>Photos</option>
-            <option>Productivity</option>
-            <option>Reading &amp; Reference</option>
-            <option>Utility</option>
+            <option value="">select</option>
+            <option>communication</option>
+            <option>companion tools</option>
+            <option>entertainment</option>
+            <option>health &amp; wellness</option>
+            <option>keyboard</option>
+            <option>launchers</option>
+            <option>music/audio</option>
+            <option>navigation</option>
+            <option>photos</option>
+            <option>productivity</option>
+            <option>reading &amp; reference</option>
+            <option>utility</option>
           </select>
           <span class="modal-meta-sep">/</span>
           <button type="button" id="light-sdk-toggle" class="modal-meta-link" data-value="No">made with light sdk: no</button>
-          <span class="modal-meta-sep">/</span>
-          <span class="modal-meta-label">source</span>
-          <input id="repo-url-input" class="modal-meta-value submit-input submit-input--inline submit-input--wide" placeholder="https://github.com/username/app-name" autocomplete="off">
-          <button type="button" id="fetch-btn" class="modal-meta-link">fetch &#8635;</button>
         </div>
 
-        <div class="modal-body">
-          <input type="text" id="description-input" class="submit-input submit-input--body" placeholder="One-sentence description, shown in the list view">
-          <textarea id="long-description-input" class="submit-input submit-input--body" rows="4" placeholder="Longer description for this popup (optional - reuses the short one if left blank)"></textarea>
-        </div>
+        <div id="long-description-input" class="submit-input submit-input--body modal-body long-description-editor" contenteditable="true" data-placeholder="Longer description to show in the popup. If left blank, it reuses the one-sentence summary."></div>
       </div>
     </div>
 
-    <p class="imf-hint" id="fetch-status"></p>
-
-    <div id="readme-candidates" class="imf-chips" style="flex-direction: row; flex-wrap: wrap; display:none;"></div>
-    <div class="imf-field-input-row" style="margin-top: 0.4rem;">
-      <input type="text" id="screenshot-url-input" class="submit-input submit-input--body" style="width: 24rem; flex: 0 0 auto;" placeholder="add a screenshot URL...">
-      <button id="add-screenshot-btn" class="imf-btn">Add</button>
+    <div class="imf-field">
+      <label for="screenshot-url-input">Screenshots</label>
+      <div class="imf-field-input-row">
+        <div class="sidebar-search" style="width: 26rem;">
+          <input type="text" id="screenshot-url-input" class="sidebar-search-input" placeholder="paste a screenshot URL">
+        </div>
+        <button id="add-screenshot-btn" class="imf-btn imf-btn--primary">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+          Add
+        </button>
+      </div>
     </div>
+    <div id="readme-candidates" class="imf-chips" style="flex-direction: row; flex-wrap: wrap; display:none;"></div>
+    <p class="imf-hint">Click a screenshot above to remove it.</p>
 
     <p class="imf-hint">Signed in as <strong id="submit-login"></strong></p>
 
