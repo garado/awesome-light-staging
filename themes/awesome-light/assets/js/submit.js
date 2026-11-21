@@ -51,7 +51,11 @@
     requestAnimationFrame(frame);
   }
 
-  function showToast(msg) {
+  // createToast() returns a handle so a single toast can be updated in place
+  // (e.g. "Fetching..." -> "Fetched.") instead of spawning a new one per
+  // message. showToast() is the one-shot convenience wrapper around it.
+
+  function createToast(msg) {
     var host = document.getElementById("toast-host");
     if (!host) {
       host = document.createElement("div");
@@ -64,6 +68,7 @@
     host.appendChild(toast);
 
     var state = { y: 24, opacity: 0 };
+    var dismissTimer = null;
     function render() {
       toast.style.transform = "translateY(" + state.y + "px)";
       toast.style.opacity = state.opacity;
@@ -73,19 +78,30 @@
     animateSpring({ from: 24, to: 0, stiffness: 300, damping: 26, onUpdate: function(y) { state.y = y; render(); } });
     animateSpring({ from: 0, to: 1, stiffness: 300, damping: 34, onUpdate: function(o) { state.opacity = o; render(); } });
 
-    setTimeout(function() {
+    function dismiss() {
       animateSpring({
         from: state.y, to: 24, stiffness: 300, damping: 30,
         onUpdate: function(y) { state.y = y; render(); },
         onComplete: function() { toast.remove(); },
       });
       animateSpring({ from: state.opacity, to: 0, stiffness: 300, damping: 34, onUpdate: function(o) { state.opacity = o; render(); } });
-    }, 2500);
+    }
+
+    return {
+      update: function(newMsg) { toast.textContent = newMsg; },
+      dismissAfter: function(ms) {
+        clearTimeout(dismissTimer);
+        dismissTimer = setTimeout(dismiss, ms);
+      },
+    };
+  }
+
+  function showToast(msg) {
+    createToast(msg).dismissAfter(2500);
   }
 
   var token = sessionStorage.getItem("gh_token");
   var screenshots = [];
-  var readmeCandidates = [];
   var lightSdk = false;
   var currentIssueNumber = new URLSearchParams(location.search).get("issue") || null;
   var currentUserLogin = null;
@@ -93,7 +109,7 @@
 
   var EDIT_LOCK_FIELD_IDS = [
     "name-input", "repo-url-input", "fetch-btn", "description-input",
-    "category-input", "light-sdk-toggle", "long-description-input",
+    "category-input", "light-sdk-toggle",
     "screenshot-url-input", "add-screenshot-btn",
   ];
 
@@ -104,6 +120,8 @@
       if (node.hasAttribute("contenteditable")) node.setAttribute("contenteditable", "false");
       else node.disabled = true;
     });
+    el("long-description-editor").style.pointerEvents = "none";
+    el("long-description-editor").style.opacity = "0.6";
     el("submit-btn").disabled = true;
     showError("This submission belongs to " + issueAuthor + " - only they can edit it. You can still look around, but Submit is disabled.");
   }
@@ -166,10 +184,9 @@
     if (token) {
       userPromise = ghFetch("/user").then(function(user) {
         currentUserLogin = user.login;
-        el("submit-login").textContent = user.login;
+        el("submit-btn").textContent = "Submit as @" + user.login;
       });
     } else {
-      el("submit-login").textContent = "(local preview, not signed in)";
       userPromise = Promise.resolve();
     }
 
@@ -213,7 +230,7 @@
       showToast("That doesn't look like a github.com/owner/repo URL.");
       return;
     }
-    el("fetch-status").textContent = "Fetching...";
+    var toast = createToast("Fetching...");
     ghFetch("/repos/" + parsed.owner + "/" + parsed.repo)
       .then(function(repoData) {
         if (!el("name-input").value) el("name-input").value = humanize(repoData.name);
@@ -229,7 +246,7 @@
             var m;
             while ((m = re.exec(text))) found.push(m[1]);
           });
-          readmeCandidates = found
+          found
             .filter(function(u) { return !BADGE_RE.test(u); })
             .map(function(u) {
               if (/^https?:\/\//.test(u)) return u;
@@ -237,11 +254,10 @@
               return "https://raw.githubusercontent.com/" + parsed.owner + "/" + parsed.repo + "/" + repoData.default_branch + "/" + cleanPath;
             })
             .filter(function(u, i, arr) { return arr.indexOf(u) === i; })
-            .slice(0, 12);
-          renderCandidates();
+            .slice(0, 12)
+            .forEach(addScreenshot);
 
-          var longDescEl = el("long-description-input");
-          var isLongDescEmpty = longDescEl.textContent.replace(/​/g, "").trim() === "";
+          var isLongDescEmpty = getLongDescriptionMarkdown().trim() === "";
           if (isLongDescEmpty) {
             var descText = text;
             [MD_IMAGE_RE, IMG_TAG_FULL_RE].forEach(function(re) { descText = descText.replace(re, ""); });
@@ -249,36 +265,15 @@
             if (descText) setLongDescriptionMarkdown(descText);
           }
 
-          el("fetch-status").textContent = "";
-          showToast("Fetched. Edit anything above before submitting.");
+          toast.update("Fetched. Edit anything above before submitting.");
+          toast.dismissAfter(2500);
         });
       })
       .catch(function(err) {
-        el("fetch-status").textContent = "Couldn't fetch that repo (" + err.message + "). Make sure it's public.";
+        toast.update("Couldn't fetch that repo (" + err.message + "). Make sure it's public.");
+        toast.dismissAfter(4000);
       });
   });
-
-  function renderCandidates() {
-    var host = el("readme-candidates");
-    host.innerHTML = "";
-    host.style.display = readmeCandidates.length ? "flex" : "none";
-    readmeCandidates.forEach(function(url) {
-      var chip = document.createElement("div");
-      chip.className = "imf-chip";
-      chip.style.cursor = "pointer";
-      chip.title = "Click to add";
-
-      var img = document.createElement("img");
-      img.src = url;
-      img.style.width = "6rem";
-      img.style.height = "6rem";
-      img.style.objectFit = "cover";
-      chip.appendChild(img);
-
-      chip.addEventListener("click", function() { addScreenshot(url); });
-      host.appendChild(chip);
-    });
-  }
 
   // ---- screenshots: rendered directly as the modal's media row -----------
 
@@ -292,24 +287,111 @@
   function renderScreenshots() {
     var host = el("modal-media");
     host.innerHTML = "";
-    screenshots.forEach(function(url, i) {
+    screenshots.forEach(function(url) {
       var img = document.createElement("img");
       img.src = url;
       img.className = "modal-media-item is-loaded";
-      img.title = "Click to remove";
-      img.addEventListener("click", function() {
-        screenshots.splice(i, 1);
-        renderScreenshots();
-      });
+      img.title = "Manage screenshots";
+      img.addEventListener("click", openImageManager);
       host.appendChild(img);
     });
+
+    var addTile = document.createElement("button");
+    addTile.type = "button";
+    addTile.className = "modal-media-add";
+    addTile.textContent = "+";
+    addTile.title = "Manage screenshots";
+    addTile.addEventListener("click", openImageManager);
+    host.appendChild(addTile);
+
     updatePreview();
     updateSubmitEnabled();
+  }
+
+  // ---- image manager modal: grid view, drag-to-reorder, delete, add-by-URL
+
+  var dragFromIndex = null;
+
+  function renderImageManagerGrid() {
+    var grid = el("img-mgr-grid");
+    grid.innerHTML = "";
+    screenshots.forEach(function(url, i) {
+      var item = document.createElement("div");
+      item.className = "img-mgr-item";
+      item.draggable = true;
+
+      var img = document.createElement("img");
+      img.src = url;
+      item.appendChild(img);
+
+      var removeBtn = document.createElement("button");
+      removeBtn.type = "button";
+      removeBtn.className = "img-mgr-remove";
+      removeBtn.textContent = "×";
+      removeBtn.title = "Remove";
+      removeBtn.addEventListener("click", function() {
+        screenshots.splice(i, 1);
+        renderImageManagerGrid();
+        renderScreenshots();
+      });
+      item.appendChild(removeBtn);
+
+      item.addEventListener("dragstart", function() {
+        dragFromIndex = i;
+        item.classList.add("is-dragging");
+      });
+      item.addEventListener("dragend", function() {
+        item.classList.remove("is-dragging");
+      });
+      item.addEventListener("dragover", function(e) {
+        e.preventDefault();
+        item.classList.add("is-drop-target");
+      });
+      item.addEventListener("dragleave", function() {
+        item.classList.remove("is-drop-target");
+      });
+      item.addEventListener("drop", function(e) {
+        e.preventDefault();
+        item.classList.remove("is-drop-target");
+        if (dragFromIndex === null || dragFromIndex === i) return;
+        var moved = screenshots.splice(dragFromIndex, 1)[0];
+        screenshots.splice(i, 0, moved);
+        dragFromIndex = null;
+        renderImageManagerGrid();
+        renderScreenshots();
+      });
+
+      grid.appendChild(item);
+    });
+  }
+
+  function openImageManager() {
+    renderImageManagerGrid();
+    el("screenshot-url-input").value = "";
+    el("image-manager-overlay").classList.add("open");
+  }
+
+  function closeImageManager() {
+    el("image-manager-overlay").classList.remove("open");
   }
 
   el("add-screenshot-btn").addEventListener("click", function() {
     addScreenshot(el("screenshot-url-input").value);
     el("screenshot-url-input").value = "";
+    renderImageManagerGrid();
+  });
+  el("screenshot-url-input").addEventListener("keydown", function(e) {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      el("add-screenshot-btn").click();
+    }
+  });
+  el("image-manager-done-btn").addEventListener("click", closeImageManager);
+  el("image-manager-overlay").addEventListener("click", function(e) {
+    if (e.target === el("image-manager-overlay")) closeImageManager();
+  });
+  document.addEventListener("keydown", function(e) {
+    if (e.key === "Escape" && el("image-manager-overlay").classList.contains("open")) closeImageManager();
   });
 
   // ---- light sdk toggle ---------------------------------------------------
@@ -330,328 +412,63 @@
   ["repo-url-input"].forEach(function(id) {
     el(id).addEventListener("input", function() { updatePreview(); });
   });
+  el("repo-url-input").addEventListener("keydown", function(e) {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      el("fetch-btn").click();
+    }
+  });
   ["name-input", "category-input", "description-input"].forEach(function(id) {
     el(id).addEventListener("input", updateSubmitEnabled);
   });
 
-  // ---- long description: live WYSIWYG markdown editor ---------------------
-  // The long-description field is a contenteditable div. Typing markdown
-  // syntax (**bold**, *italic*, "- " bullets, "# " headings, "> " quotes)
-  // converts it to real formatting immediately, instead of showing raw
-  // markdown next to a separate preview. htmlToMarkdown() turns the
-  // resulting rich text back into markdown for the GitHub issue body;
-  // markdownToHtml() does the reverse to hydrate the editor when loading
-  // an existing submission.
+  // ---- long description: Tiptap (ProseMirror), no toolbar of its own -----
+  // No toolbar/chrome is rendered - the editable area reuses .modal-body, the
+  // same class the real app page uses to render descriptions, so typing
+  // **bold**/# heading/- list (Tiptap's built-in input rules, not hand-rolled
+  // caret math) produces something that already looks like the final page.
+  // Loaded via dynamic import since there's no bundler in this project and
+  // Tiptap doesn't ship a single-file browser build the way Toast UI did.
 
-  function escapeHtml(s) {
-    return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
-  }
+  var longDescEditor = null;
+  var pendingLongDescMarkdown = null;
 
-  function renderInline(s) {
-    s = escapeHtml(s);
-    s = s.replace(/\*\*([^*]+)\*\*|__([^_]+)__/g, function(m, a, b) { return "<strong>" + (a || b) + "</strong>"; });
-    s = s.replace(/\*([^*]+)\*|_([^_]+)_/g, function(m, a, b) { return "<em>" + (a || b) + "</em>"; });
-    s = s.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank" rel="noopener">$1</a>');
-    return s;
-  }
+  (async function initLongDescEditor() {
+    var TIPTAP_VERSION = "2.9.1";
+    var MARKDOWN_EXT_VERSION = "0.8.10";
+    // ?deps= pins every package's @tiptap/core to the same exact version -
+    // without it, esm.sh resolves each package's own peer-range separately
+    // and you end up with multiple distinct copies of @tiptap/core, which
+    // breaks Tiptap's extension registration (it does identity checks).
+    var CORE_PIN = "?deps=@tiptap/core@" + TIPTAP_VERSION;
+    var [{ Editor }, { default: StarterKit }, { default: Placeholder }, { Markdown }] = await Promise.all([
+      import("https://esm.sh/@tiptap/core@" + TIPTAP_VERSION),
+      import("https://esm.sh/@tiptap/starter-kit@" + TIPTAP_VERSION + CORE_PIN),
+      import("https://esm.sh/@tiptap/extension-placeholder@" + TIPTAP_VERSION + CORE_PIN),
+      import("https://esm.sh/tiptap-markdown@" + MARKDOWN_EXT_VERSION + CORE_PIN),
+    ]);
 
-  function markdownToHtml(text) {
-    var lines = (text || "").replace(/\r\n/g, "\n").split("\n");
-    var html = [];
-    var listType = null;
-    var paragraph = [];
-
-    function flushParagraph() {
-      if (paragraph.length) {
-        html.push("<p>" + renderInline(paragraph.join(" ")) + "</p>");
-        paragraph = [];
-      }
-    }
-    function closeList() {
-      if (listType) { html.push("</" + listType + ">"); listType = null; }
-    }
-
-    lines.forEach(function(line) {
-      var trimmed = line.trim();
-      var bullet = trimmed.match(/^[-*+]\s+(.*)$/);
-      var numbered = trimmed.match(/^\d+\.\s+(.*)$/);
-      var heading = trimmed.match(/^(#{1,6})\s+(.*)$/);
-      var quote = trimmed.match(/^>\s?(.*)$/);
-
-      if (!trimmed) {
-        flushParagraph();
-        closeList();
-      } else if (heading) {
-        flushParagraph();
-        closeList();
-        var level = Math.min(heading[1].length + 2, 6); // keep below the card's own <h1>/<h2>
-        html.push("<h" + level + ">" + renderInline(heading[2]) + "</h" + level + ">");
-      } else if (bullet) {
-        flushParagraph();
-        if (listType !== "ul") { closeList(); html.push("<ul>"); listType = "ul"; }
-        html.push("<li>" + renderInline(bullet[1]) + "</li>");
-      } else if (numbered) {
-        flushParagraph();
-        if (listType !== "ol") { closeList(); html.push("<ol>"); listType = "ol"; }
-        html.push("<li>" + renderInline(numbered[1]) + "</li>");
-      } else if (quote) {
-        flushParagraph();
-        closeList();
-        html.push("<blockquote>" + renderInline(quote[1]) + "</blockquote>");
-      } else {
-        closeList();
-        paragraph.push(trimmed);
-      }
+    longDescEditor = new Editor({
+      element: el("long-description-editor"),
+      extensions: [
+        StarterKit,
+        Markdown.configure({ html: false }),
+        Placeholder.configure({
+          placeholder: "Longer description to show in the popup. If left blank, it reuses the one-sentence summary.",
+        }),
+      ],
+      content: pendingLongDescMarkdown || "",
     });
-    flushParagraph();
-    closeList();
-    return html.join("\n") || "<p><br></p>";
-  }
-
-  function inlineToMarkdown(node) {
-    var out = "";
-    node.childNodes.forEach(function(child) {
-      if (child.nodeType === Node.TEXT_NODE) {
-        out += child.textContent.replace(/​/g, "");
-      } else if (child.nodeType !== Node.ELEMENT_NODE) {
-        return;
-      } else {
-        var tag = child.tagName.toLowerCase();
-        if (tag === "strong" || tag === "b") out += "**" + inlineToMarkdown(child) + "**";
-        else if (tag === "em" || tag === "i") out += "*" + inlineToMarkdown(child) + "*";
-        else if (tag === "a") out += "[" + inlineToMarkdown(child) + "](" + child.getAttribute("href") + ")";
-        else if (tag === "br") out += "\n";
-        else out += inlineToMarkdown(child);
-      }
-    });
-    return out;
-  }
-
-  function htmlToMarkdown(root) {
-    var lines = [];
-    root.childNodes.forEach(function(block) {
-      if (block.nodeType === Node.TEXT_NODE) {
-        var t = block.textContent.replace(/​/g, "").trim();
-        if (t) lines.push(t, "");
-        return;
-      }
-      if (block.nodeType !== Node.ELEMENT_NODE) return;
-      var tag = block.tagName.toLowerCase();
-      var headingMatch = tag.match(/^h([1-6])$/);
-      if (headingMatch) {
-        var level = Math.max(1, headingMatch[1] - 2); // inverse of markdownToHtml's +2 shift
-        lines.push("#".repeat(level) + " " + inlineToMarkdown(block).trim(), "");
-      } else if (tag === "blockquote") {
-        lines.push("> " + inlineToMarkdown(block).trim(), "");
-      } else if (tag === "ul" || tag === "ol") {
-        var i = 0;
-        block.childNodes.forEach(function(li) {
-          if (li.nodeType !== Node.ELEMENT_NODE || li.tagName.toLowerCase() !== "li") return;
-          i++;
-          var prefix = tag === "ul" ? "- " : (i + ". ");
-          lines.push(prefix + inlineToMarkdown(li).trim());
-        });
-        lines.push("");
-      } else if (tag === "br") {
-        lines.push("");
-      } else {
-        var text = inlineToMarkdown(block).trim();
-        if (text) lines.push(text, "");
-      }
-    });
-    while (lines.length && lines[lines.length - 1] === "") lines.pop();
-    return lines.join("\n");
-  }
+  })();
 
   function setLongDescriptionMarkdown(text) {
-    var editor = el("long-description-input");
-    editor.innerHTML = markdownToHtml(text);
-    editor.classList.toggle("is-empty", editor.textContent.replace(/​/g, "").trim() === "");
+    if (!longDescEditor) { pendingLongDescMarkdown = text || ""; return; }
+    longDescEditor.commands.setContent(text || "");
   }
 
   function getLongDescriptionMarkdown() {
-    return htmlToMarkdown(el("long-description-input"));
+    return longDescEditor ? longDescEditor.storage.markdown.getMarkdown() : (pendingLongDescMarkdown || "");
   }
-
-  // -- live inline conversion: **bold** / __bold__ / *italic* / _italic_ ----
-
-  function tryInlineMarkdown(editorEl) {
-    var sel = window.getSelection();
-    if (!sel.rangeCount) return;
-    var range = sel.getRangeAt(0);
-    if (!range.collapsed) return;
-    var node = range.startContainer;
-    if (node.nodeType !== Node.TEXT_NODE || !editorEl.contains(node)) return;
-
-    var text = node.textContent.slice(0, range.startOffset);
-    var tagName = null, match = null;
-
-    match = text.match(/\*\*([^*\n]+)\*\*$/) || text.match(/__([^_\n]+)__$/);
-    if (match) tagName = "strong";
-
-    if (!match) {
-      var em = text.match(/\*([^*\n]+)\*$/);
-      var delim = "*";
-      if (!em) { em = text.match(/_([^_\n]+)_$/); delim = "_"; }
-      if (em) {
-        var openIdx = text.length - em[0].length;
-        if (!(openIdx > 0 && text[openIdx - 1] === delim)) {
-          match = em;
-          tagName = "em";
-        }
-      }
-    }
-    if (!match) return;
-
-    var matchStart = range.startOffset - match[0].length;
-    var before = node.textContent.slice(0, matchStart);
-    var after = node.textContent.slice(range.startOffset);
-
-    var parent = node.parentNode;
-    var beforeNode = document.createTextNode(before);
-    var inlineEl = document.createElement(tagName);
-    inlineEl.textContent = match[1];
-    var afterNode = document.createTextNode(after || "​");
-
-    parent.replaceChild(afterNode, node);
-    parent.insertBefore(inlineEl, afterNode);
-    parent.insertBefore(beforeNode, inlineEl);
-
-    var newRange = document.createRange();
-    newRange.setStart(afterNode, 0);
-    newRange.collapse(true);
-    sel.removeAllRanges();
-    sel.addRange(newRange);
-  }
-
-  // -- live block conversion: "- "/"1. " lists, "# " headings, "> " quotes -
-
-  function tryBlockMarkdown(editorEl) {
-    var sel = window.getSelection();
-    if (!sel.rangeCount) return;
-    var range = sel.getRangeAt(0);
-    if (!range.collapsed) return;
-    var node = range.startContainer;
-    if (node.nodeType !== Node.TEXT_NODE) return;
-
-    var parent = node.parentNode;
-    if (!editorEl.contains(parent)) return;
-    if (parent.childNodes.length !== 1 || parent.firstChild !== node) return;
-    if (range.startOffset !== node.textContent.length) return;
-
-    // Fresh blocks are seeded with a zero-width-space caret anchor - strip it
-    // before matching, or "- " etc. never matches at the start of the string.
-    var text = node.textContent.replace(/^​/, "");
-    var bullet = text.match(/^[-*]\s$/);
-    var numbered = text.match(/^\d+\.\s$/);
-    var heading = text.match(/^(#{1,6})\s$/);
-    var quote = text.match(/^>\s$/);
-    if (!bullet && !numbered && !heading && !quote) return;
-
-    // The very first line (before any Enter) has no wrapping block yet - the
-    // text node sits directly in the editor root. Handle that the same way,
-    // just operating on the loose text node instead of a wrapping element.
-    var isRoot = parent === editorEl;
-    var targetParent = isRoot ? editorEl : parent.parentNode;
-    var insertBeforeRef = isRoot ? node : parent;
-    var toRemove = isRoot ? node : parent;
-    var newBlock;
-
-    if (bullet || numbered) {
-      var listType = bullet ? "ul" : "ol";
-      var prev = insertBeforeRef.previousSibling;
-      var list = (prev && prev.nodeType === Node.ELEMENT_NODE && prev.tagName.toLowerCase() === listType)
-        ? prev
-        : targetParent.insertBefore(document.createElement(listType), insertBeforeRef);
-      newBlock = document.createElement("li");
-      list.appendChild(newBlock);
-    } else if (heading) {
-      newBlock = document.createElement("h" + Math.min(heading[1].length + 2, 6));
-      targetParent.insertBefore(newBlock, insertBeforeRef);
-    } else {
-      newBlock = document.createElement("blockquote");
-      targetParent.insertBefore(newBlock, insertBeforeRef);
-    }
-
-    var textNode = document.createTextNode("​");
-    newBlock.appendChild(textNode);
-    targetParent.removeChild(toRemove);
-
-    var newRange = document.createRange();
-    newRange.setStart(textNode, textNode.textContent.length);
-    newRange.collapse(true);
-    sel.removeAllRanges();
-    sel.addRange(newRange);
-  }
-
-  // -- Enter key: always start a fresh top-level block, or continue a list -
-
-  function handleEditorEnter(editorEl, e) {
-    var sel = window.getSelection();
-    if (!sel.rangeCount) return;
-    var range = sel.getRangeAt(0);
-    var node = range.startContainer;
-    var block = node.nodeType === Node.TEXT_NODE ? node.parentNode : node;
-    if (!editorEl.contains(block)) return;
-
-    e.preventDefault();
-
-    var li = block.closest ? block.closest("li") : null;
-    if (li) {
-      if (li.textContent.replace(/​/g, "").trim() === "") {
-        var list = li.parentNode;
-        var p = document.createElement("p");
-        p.appendChild(document.createTextNode("​"));
-        list.parentNode.insertBefore(p, list.nextSibling);
-        list.removeChild(li);
-        if (!list.childNodes.length) list.parentNode.removeChild(list);
-        placeCaret(p.firstChild, 0);
-      } else {
-        var newLi = document.createElement("li");
-        newLi.appendChild(document.createTextNode("​"));
-        li.parentNode.insertBefore(newLi, li.nextSibling);
-        placeCaret(newLi.firstChild, 0);
-      }
-      return;
-    }
-
-    var blockEl = block === editorEl ? null : block;
-    var newP = document.createElement("p");
-    newP.appendChild(document.createTextNode("​"));
-    if (blockEl) {
-      blockEl.parentNode.insertBefore(newP, blockEl.nextSibling);
-    } else {
-      editorEl.appendChild(newP);
-    }
-    placeCaret(newP.firstChild, 0);
-  }
-
-  function placeCaret(node, offset) {
-    var sel = window.getSelection();
-    var range = document.createRange();
-    range.setStart(node, offset);
-    range.collapse(true);
-    sel.removeAllRanges();
-    sel.addRange(range);
-  }
-
-  (function initLongDescriptionEditor() {
-    var editor = el("long-description-input");
-
-    function updateEmptyState() {
-      editor.classList.toggle("is-empty", editor.textContent.replace(/​/g, "").trim() === "");
-    }
-
-    editor.addEventListener("keydown", function(e) {
-      if (e.key === "Enter") handleEditorEnter(editor, e);
-    });
-    editor.addEventListener("input", function() {
-      tryInlineMarkdown(editor);
-      tryBlockMarkdown(editor);
-      updateEmptyState();
-    });
-    updateEmptyState();
-  })();
 
   function updateSubmitEnabled() {
     var ok = canEdit &&

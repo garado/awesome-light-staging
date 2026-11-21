@@ -2,7 +2,7 @@
 {{ $submitJS := resources.Get "js/submit.js" | minify | fingerprint }}
 
 <div class="imf submit-page">
-  <h1 class="imf-page-title">awesome-light submission portal</h1>
+  <h1 id="submit-page-title" class="imf-page-title">awesome-light submission portal</h1>
   <p class="imf-hint">Through this portal, you can paste a repo URL, edit your submission, then sign in with GitHub to submit it.</p>
 
   <p id="submit-error" class="imf-hint" style="display:none;"></p>
@@ -18,8 +18,6 @@
       <input id="repo-url-input" class="modal-meta-value submit-input submit-input--inline submit-input--wide" placeholder="https://github.com/username/app-name" autocomplete="off">
       <button type="button" id="fetch-btn" class="modal-meta-link">fetch &#8635;</button>
     </div>
-    <p class="imf-hint" id="fetch-status"></p>
-
     <div class="modal-meta-row submit-modal" id="summary-row">
       <span><b>Summary:</b></span>
       <input type="text" id="description-input" class="submit-input submit-input--inline submit-input--wide" placeholder="One-sentence description to show in the list view">
@@ -55,26 +53,28 @@
           <button type="button" id="light-sdk-toggle" class="modal-meta-link" data-value="No">made with light sdk: no</button>
         </div>
 
-        <div id="long-description-input" class="submit-input submit-input--body modal-body long-description-editor" contenteditable="true" data-placeholder="Longer description to show in the popup. If left blank, it reuses the one-sentence summary."></div>
+        <div id="long-description-editor" class="modal-body long-description-editor"></div>
       </div>
     </div>
 
-    <div class="imf-field">
-      <label for="screenshot-url-input">Screenshots</label>
-      <div class="imf-field-input-row">
-        <div class="sidebar-search" style="flex: 0 0 26rem;">
-          <input type="text" id="screenshot-url-input" class="sidebar-search-input" placeholder="paste a screenshot URL">
+    <div class="modal-overlay" id="image-manager-overlay">
+      <div class="modal" id="image-manager-modal">
+        <h2 class="modal-title" style="font-size: 1.4rem;">Manage screenshots</h2>
+
+        <div class="img-mgr-grid" id="img-mgr-grid"></div>
+
+        <div class="imf-field-input-row">
+          <div class="sidebar-search" style="flex: 0 0 24rem;">
+            <input type="text" id="screenshot-url-input" class="sidebar-search-input" placeholder="Paste a screenshot URL" autocomplete="off">
+          </div>
+          <button type="button" id="add-screenshot-btn" class="imf-btn imf-btn--primary">+ Add</button>
         </div>
-        <button id="add-screenshot-btn" class="imf-btn imf-btn--primary">
-          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-          Add
-        </button>
+
+        <div class="imf-controls-group imf-controls-group--center">
+          <button type="button" id="image-manager-done-btn" class="imf-btn">Done</button>
+        </div>
       </div>
     </div>
-    <div id="readme-candidates" class="imf-chips" style="flex-direction: row; flex-wrap: wrap; display:none; margin-top: 0.6rem;"></div>
-    <p class="imf-hint">Click a screenshot above to remove it.</p>
-
-    <p class="imf-hint">Signed in as <strong id="submit-login"></strong></p>
 
     <div class="imf-controls-group imf-controls-group--center">
       <button id="submit-btn" class="imf-btn imf-btn--primary" disabled>Submit</button>
