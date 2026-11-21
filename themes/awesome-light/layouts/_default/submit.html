@@ -1,0 +1,495 @@
+{{ define "main" }}
+<div class="site">
+  {{ partial "page-sidebar.html" . }}
+
+  <main class="content">
+    <article class="page-prose submit-page">
+      <h1>Submit an app</h1>
+      <p>Sign in with GitHub, paste your repo's URL, and edit the preview below before it goes out as a real submission issue - under your own GitHub account, so {{ .Site.Params.description | default "the maintainer" }} can reply to you directly.</p>
+
+      <div id="submit-error" class="submit-error" hidden></div>
+
+      <div id="signed-out">
+        <button id="login-btn" class="submit-btn submit-btn--primary">Sign in with GitHub</button>
+        <p class="submit-hint">This asks for the <code>public_repo</code> scope - enough to open and edit a submission issue as you. Nothing else on your account is touched.</p>
+      </div>
+
+      <div id="signed-in" class="submit-layout" hidden>
+        <p class="submit-identity">Signed in as <strong id="submit-login"></strong></p>
+
+        <div class="submit-form">
+          <label for="repo-url-input">Repository URL</label>
+          <div class="submit-row">
+            <input id="repo-url-input" type="text" placeholder="https://github.com/username/app-name" autocomplete="off">
+            <button id="fetch-btn" class="submit-btn">Fetch</button>
+          </div>
+          <p id="fetch-status" class="submit-hint"></p>
+
+          <label for="name-input">App name</label>
+          <input id="name-input" type="text" placeholder="Luma" autocomplete="off">
+
+          <label for="category-input">Category</label>
+          <select id="category-input">
+            <option value="">Choose a category</option>
+            <option>Communication</option>
+            <option>Companion Tools</option>
+            <option>Entertainment</option>
+            <option>Health &amp; Wellness</option>
+            <option>Keyboard</option>
+            <option>Launchers</option>
+            <option>Music/Audio</option>
+            <option>Navigation</option>
+            <option>Photos</option>
+            <option>Productivity</option>
+            <option>Reading &amp; Reference</option>
+            <option>Utility</option>
+          </select>
+
+          <label for="description-input">Short description</label>
+          <textarea id="description-input" rows="2" placeholder="A minimal launcher for the Light Phone III."></textarea>
+
+          <label for="long-description-input">Long description <span class="submit-optional">optional</span></label>
+          <textarea id="long-description-input" rows="4" placeholder="Shown in the app's popup. Leave blank to reuse the short description."></textarea>
+
+          <label for="light-sdk-input">Built with the Light SDK?</label>
+          <select id="light-sdk-input">
+            <option value="No">No</option>
+            <option value="Yes">Yes</option>
+          </select>
+
+          <label>Screenshots</label>
+          <p class="submit-hint">Pulled from your repo's README when available. Add your own URL, drop ones you don't want, and reorder - the first one is used as the cover image.</p>
+          <div id="readme-candidates" class="submit-candidates" hidden>
+            <p class="submit-hint">Found in the README - click to add:</p>
+            <div id="readme-candidates-list" class="submit-candidates-list"></div>
+          </div>
+          <ul id="screenshots-list" class="submit-screenshots"></ul>
+          <div class="submit-row">
+            <input id="screenshot-url-input" type="text" placeholder="https://..." autocomplete="off">
+            <button id="add-screenshot-btn" class="submit-btn">Add</button>
+          </div>
+
+          <button id="submit-btn" class="submit-btn submit-btn--primary" style="margin-top: 1.5rem;" disabled>Open submission</button>
+          <p id="submit-result" class="submit-hint"></p>
+        </div>
+
+        <div class="submit-preview">
+          <p class="submit-preview-label">Preview</p>
+          <div class="app-grid" style="max-width: 15rem;">
+            <div class="app-card">
+              <div class="app-card-thumb">
+                <img id="preview-thumb" class="app-card-thumb-img" alt="" hidden>
+                <span id="preview-fallback" class="app-card-fallback">?</span>
+              </div>
+              <div class="app-card-info">
+                <div class="app-card-title-row">
+                  <span class="app-card-title" id="preview-title">App name</span>
+                  <span class="app-card-author" id="preview-author"></span>
+                </div>
+                <div class="app-card-meta">
+                  <span class="app-card-category" id="preview-category"></span>
+                </div>
+                <p class="app-card-summary" id="preview-summary" style="display: block; margin-top: 0.4rem;"></p>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </article>
+  </main>
+</div>
+
+<style>
+  .submit-page .submit-error {
+    border: 1px solid var(--fg);
+    padding: 0.75rem 1rem;
+    margin: 1rem 0;
+  }
+  .submit-layout {
+    display: flex;
+    gap: 2.5rem;
+    align-items: flex-start;
+    flex-wrap: wrap;
+  }
+  .submit-form {
+    flex: 1 1 22rem;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 0.4rem;
+  }
+  .submit-form label {
+    margin-top: 1rem;
+    font-size: 0.85rem;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--muted);
+  }
+  .submit-optional { text-transform: none; letter-spacing: normal; }
+  .submit-form input[type="text"],
+  .submit-form textarea,
+  .submit-form select {
+    background: var(--bg-sunken);
+    border: 1px solid var(--muted);
+    color: var(--fg);
+    padding: 0.5rem 0.6rem;
+    font: inherit;
+    width: 100%;
+  }
+  .submit-row { display: flex; gap: 0.5rem; }
+  .submit-row input { flex: 1; }
+  .submit-btn {
+    background: none;
+    border: 1px solid var(--fg);
+    color: var(--fg);
+    padding: 0.5rem 1rem;
+    cursor: pointer;
+    font: inherit;
+  }
+  .submit-btn:hover { background: var(--bg-sunken); }
+  .submit-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+  .submit-btn--primary { background: var(--fg); color: var(--bg); }
+  .submit-btn--primary:hover { opacity: 0.85; background: var(--fg); }
+  .submit-hint { color: var(--muted); font-size: 0.85rem; margin: 0.25rem 0; }
+  .submit-identity { color: var(--muted); }
+  .submit-candidates { margin: 0.5rem 0; }
+  .submit-candidates-list { display: flex; flex-wrap: wrap; gap: 0.5rem; }
+  .submit-candidates-list img {
+    width: 4rem; height: 4rem; object-fit: cover;
+    border: 1px solid var(--muted); cursor: pointer;
+  }
+  .submit-candidates-list img:hover { border-color: var(--fg); }
+  .submit-screenshots { list-style: none; margin: 0.5rem 0; padding: 0; display: flex; flex-direction: column; gap: 0.35rem; }
+  .submit-screenshots li {
+    display: flex; align-items: center; gap: 0.5rem;
+    border: 1px solid var(--muted); padding: 0.3rem 0.5rem;
+  }
+  .submit-screenshots img { width: 2.2rem; height: 2.2rem; object-fit: cover; flex-shrink: 0; }
+  .submit-screenshots .ss-url { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 0.8rem; color: var(--muted); }
+  .submit-screenshots button { background: none; border: none; color: var(--fg); cursor: pointer; font: inherit; }
+  .submit-preview { flex: 0 0 15rem; }
+  .submit-preview-label { color: var(--muted); font-size: 0.85rem; text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 0.5rem; }
+  #preview-fallback { font-size: 2.25rem; }
+</style>
+
+<script>
+(function () {
+  // ---- fill in once the Worker is deployed ---------------------------------
+  var CLIENT_ID = "Ov23lifjO1KWm8keowOt";
+  var WORKER_URL = "https://rough-limit-9460.alexisgarado.workers.dev";
+  // ---------------------------------------------------------------------------
+
+  var REPO_OWNER = "garado";
+  var REPO_NAME = "awesome-light-staging";
+  var REDIRECT_URI = location.origin + location.pathname;
+
+  var el = function (id) { return document.getElementById(id); };
+  var showError = function (msg) {
+    var box = el("submit-error");
+    box.textContent = msg;
+    box.hidden = false;
+  };
+
+  var token = sessionStorage.getItem("gh_token");
+  var screenshots = [];
+  var readmeCandidates = [];
+  var currentIssueNumber = new URLSearchParams(location.search).get("issue") || null;
+
+  function ghFetch(path, opts) {
+    opts = opts || {};
+    opts.headers = Object.assign({
+      Authorization: "token " + token,
+      Accept: "application/vnd.github+json",
+    }, opts.headers || {});
+    return fetch("https://api.github.com" + path, opts).then(function (res) {
+      return res.json().then(function (data) {
+        if (!res.ok) throw new Error(data.message || ("GitHub API error " + res.status));
+        return data;
+      });
+    });
+  }
+
+  // ---- OAuth ----------------------------------------------------------------
+
+  el("login-btn").addEventListener("click", function () {
+    var state = crypto.randomUUID();
+    sessionStorage.setItem("oauth_state", state);
+    var url = new URL("https://github.com/login/oauth/authorize");
+    url.searchParams.set("client_id", CLIENT_ID);
+    url.searchParams.set("redirect_uri", REDIRECT_URI);
+    url.searchParams.set("scope", "public_repo");
+    url.searchParams.set("state", state);
+    location.href = url.toString();
+  });
+
+  function completeLogin(code, state) {
+    var expected = sessionStorage.getItem("oauth_state");
+    sessionStorage.removeItem("oauth_state");
+    if (!expected || state !== expected) {
+      showError("Login didn't verify - try signing in again.");
+      return;
+    }
+    history.replaceState({}, "", REDIRECT_URI + (currentIssueNumber ? ("?issue=" + currentIssueNumber) : ""));
+
+    fetch(WORKER_URL + "/exchange", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ code: code }),
+    })
+      .then(function (res) { return res.json(); })
+      .then(function (data) {
+        if (data.error) { showError(data.error); return; }
+        token = data.access_token;
+        sessionStorage.setItem("gh_token", token);
+        showSignedIn();
+      })
+      .catch(function () { showError("Could not reach the login service. Try again shortly."); });
+  }
+
+  function showSignedIn() {
+    el("signed-out").hidden = true;
+    el("signed-in").hidden = false;
+    ghFetch("/user").then(function (user) {
+      el("submit-login").textContent = user.login;
+    });
+    if (currentIssueNumber) loadExistingIssue(currentIssueNumber);
+  }
+
+  var params = new URLSearchParams(location.search);
+  if (params.get("code")) {
+    completeLogin(params.get("code"), params.get("state"));
+  } else if (token) {
+    showSignedIn();
+  }
+
+  // ---- fetching repo info -----------------------------------------------
+
+  var BADGE_RE = /badge|shields\.io|badgen\.net|codecov|coveralls|\.svg(?:[?#]|$)/i;
+  var MD_IMAGE_RE = /!\[[^\]]*\]\(\s*"?([^"\s)]+)"?(?:\s+"[^"]*")?\s*\)/g;
+  var IMG_TAG_RE = /<img\b[^>]*?(?:src|href)\s*=\s*["']([^"']+)["']/gi;
+
+  function parseRepoUrl(url) {
+    var m = (url || "").trim().replace(/\/+$/, "").match(/^https:\/\/github\.com\/([^/]+)\/([^/]+)$/);
+    return m ? { owner: m[1], repo: m[2] } : null;
+  }
+
+  function humanize(slug) {
+    return slug.replace(/[-_]+/g, " ").replace(/\b\w/g, function (c) { return c.toUpperCase(); }).trim();
+  }
+
+  el("fetch-btn").addEventListener("click", function () {
+    var parsed = parseRepoUrl(el("repo-url-input").value);
+    if (!parsed) {
+      el("fetch-status").textContent = "That doesn't look like a github.com/owner/repo URL.";
+      return;
+    }
+    el("fetch-status").textContent = "Fetching...";
+    ghFetch("/repos/" + parsed.owner + "/" + parsed.repo)
+      .then(function (repoData) {
+        if (!el("name-input").value) el("name-input").value = humanize(repoData.name);
+        if (!el("description-input").value) el("description-input").value = repoData.description || "";
+        updatePreview();
+
+        return ghFetch("/repos/" + parsed.owner + "/" + parsed.repo + "/readme").then(function (readme) {
+          var text = atob(readme.content.replace(/\n/g, ""));
+          var found = [];
+          [MD_IMAGE_RE, IMG_TAG_RE].forEach(function (re) {
+            var m;
+            while ((m = re.exec(text))) found.push(m[1]);
+          });
+          readmeCandidates = found
+            .filter(function (u) { return !BADGE_RE.test(u); })
+            .map(function (u) {
+              if (/^https?:\/\//.test(u)) return u;
+              var cleanPath = u.replace(/^\.?\//, "");
+              return "https://raw.githubusercontent.com/" + parsed.owner + "/" + parsed.repo + "/" + repoData.default_branch + "/" + cleanPath;
+            })
+            .filter(function (u, i, arr) { return arr.indexOf(u) === i; })
+            .slice(0, 12);
+          renderCandidates();
+          el("fetch-status").textContent = "Fetched. Edit anything below before submitting.";
+        });
+      })
+      .catch(function (err) {
+        el("fetch-status").textContent = "Couldn't fetch that repo (" + err.message + "). Make sure it's public.";
+      });
+  });
+
+  function renderCandidates() {
+    var host = el("readme-candidates-list");
+    host.innerHTML = "";
+    el("readme-candidates").hidden = readmeCandidates.length === 0;
+    readmeCandidates.forEach(function (url) {
+      var img = document.createElement("img");
+      img.src = url;
+      img.title = "Click to add";
+      img.addEventListener("click", function () { addScreenshot(url); });
+      host.appendChild(img);
+    });
+  }
+
+  // ---- screenshot list --------------------------------------------------
+
+  function addScreenshot(url) {
+    url = (url || "").trim();
+    if (!url || screenshots.indexOf(url) !== -1) return;
+    screenshots.push(url);
+    renderScreenshots();
+  }
+
+  function renderScreenshots() {
+    var host = el("screenshots-list");
+    host.innerHTML = "";
+    screenshots.forEach(function (url, i) {
+      var li = document.createElement("li");
+
+      var img = document.createElement("img");
+      img.src = url;
+      li.appendChild(img);
+
+      var span = document.createElement("span");
+      span.className = "ss-url";
+      span.textContent = url;
+      li.appendChild(span);
+
+      if (i > 0) {
+        var up = document.createElement("button");
+        up.textContent = "^";
+        up.title = "Move up";
+        up.addEventListener("click", function () {
+          screenshots.splice(i - 1, 0, screenshots.splice(i, 1)[0]);
+          renderScreenshots();
+        });
+        li.appendChild(up);
+      }
+
+      var remove = document.createElement("button");
+      remove.textContent = "x";
+      remove.title = "Remove";
+      remove.addEventListener("click", function () {
+        screenshots.splice(i, 1);
+        renderScreenshots();
+      });
+      li.appendChild(remove);
+
+      host.appendChild(li);
+    });
+    updatePreview();
+    updateSubmitEnabled();
+  }
+
+  el("add-screenshot-btn").addEventListener("click", function () {
+    addScreenshot(el("screenshot-url-input").value);
+    el("screenshot-url-input").value = "";
+  });
+
+  // ---- live preview -------------------------------------------------------
+
+  function updatePreview() {
+    el("preview-title").textContent = el("name-input").value || "App name";
+    el("preview-category").textContent = el("category-input").value;
+    el("preview-summary").textContent = el("description-input").value;
+    var parsed = parseRepoUrl(el("repo-url-input").value);
+    el("preview-author").textContent = parsed ? parsed.owner : "";
+
+    var thumb = el("preview-thumb");
+    var fallback = el("preview-fallback");
+    if (screenshots.length) {
+      thumb.src = screenshots[0];
+      thumb.hidden = false;
+      fallback.hidden = true;
+    } else {
+      thumb.hidden = true;
+      fallback.hidden = false;
+      fallback.textContent = (el("name-input").value || "?").charAt(0).toUpperCase();
+    }
+  }
+
+  ["name-input", "category-input", "description-input", "repo-url-input"].forEach(function (id) {
+    el(id).addEventListener("input", function () { updatePreview(); updateSubmitEnabled(); });
+  });
+
+  function updateSubmitEnabled() {
+    var ok = el("name-input").value.trim() &&
+      el("category-input").value &&
+      el("description-input").value.trim() &&
+      screenshots.length > 0;
+    el("submit-btn").disabled = !ok;
+  }
+
+  // ---- building and sending the issue -------------------------------------
+
+  function buildBody() {
+    var lines = [];
+    lines.push("### App name", "", el("name-input").value.trim(), "");
+    lines.push("### Repository URL", "", el("repo-url-input").value.trim(), "");
+    lines.push("### Category", "", el("category-input").value, "");
+    lines.push("### Built with the Light SDK?", "", el("light-sdk-input").value, "");
+    lines.push("### Short description", "", el("description-input").value.trim(), "");
+    lines.push("### Long description", "", el("long-description-input").value.trim() || "_No response_", "");
+    lines.push("### Screenshots", "", screenshots.join("\n"), "");
+    return lines.join("\n");
+  }
+
+  function field(body, label) {
+    var escaped = label.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    var re = new RegExp("### " + escaped + "\\s*\\n\\s*([^\\n]*(?:\\n(?!### )[^\\n]*)*)", "i");
+    var m = body.match(re);
+    if (!m) return "";
+    var v = m[1].trim();
+    return v === "_No response_" ? "" : v;
+  }
+
+  function loadExistingIssue(number) {
+    ghFetch("/repos/" + REPO_OWNER + "/" + REPO_NAME + "/issues/" + number)
+      .then(function (issue) {
+        var body = issue.body || "";
+        el("name-input").value = field(body, "App name");
+        el("repo-url-input").value = field(body, "Repository URL");
+        el("category-input").value = field(body, "Category");
+        el("light-sdk-input").value = field(body, "Built with the Light SDK?") === "Yes" ? "Yes" : "No";
+        el("description-input").value = field(body, "Short description");
+        el("long-description-input").value = field(body, "Long description");
+        screenshots = field(body, "Screenshots").split("\n").map(function (s) { return s.trim(); }).filter(Boolean);
+        renderScreenshots();
+        el("submit-btn").textContent = "Update submission";
+        el("submit-result").innerHTML = 'Editing <a href="' + issue.html_url + '" target="_blank">issue #' + number + "</a>.";
+      })
+      .catch(function (err) {
+        showError("Couldn't load issue #" + number + " (" + err.message + ").");
+      });
+  }
+
+  el("submit-btn").addEventListener("click", function () {
+    el("submit-btn").disabled = true;
+    var payload = {
+      title: (currentIssueNumber ? "" : "New submission: ") + el("name-input").value.trim(),
+      body: buildBody(),
+      labels: ["submission"],
+    };
+
+    var req = currentIssueNumber
+      ? ghFetch("/repos/" + REPO_OWNER + "/" + REPO_NAME + "/issues/" + currentIssueNumber, {
+          method: "PATCH",
+          body: JSON.stringify({ title: payload.title, body: payload.body }),
+        })
+      : ghFetch("/repos/" + REPO_OWNER + "/" + REPO_NAME + "/issues", {
+          method: "POST",
+          body: JSON.stringify(payload),
+        });
+
+    req
+      .then(function (issue) {
+        currentIssueNumber = issue.number;
+        history.replaceState({}, "", REDIRECT_URI + "?issue=" + issue.number);
+        el("submit-result").innerHTML = 'Done - <a href="' + issue.html_url + '" target="_blank">view issue #' + issue.number + "</a>. A bot will open a PR shortly; come back to this page to edit before it's reviewed.";
+        el("submit-btn").textContent = "Update submission";
+      })
+      .catch(function (err) {
+        showError("Couldn't submit (" + err.message + ").");
+      })
+      .finally(function () { updateSubmitEnabled(); });
+  });
+})();
+</script>
+{{ end }}
