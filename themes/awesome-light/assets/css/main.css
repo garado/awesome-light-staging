@@ -34,6 +34,10 @@ body {
 a { color: inherit; }
 img, video { max-width: 100%; display: block; }
 button { font-family: inherit; touch-action: manipulation; }
+code {
+  font-family: "Akkurat Mono", ui-monospace, monospace;
+  padding: 0.1em 0.2em;
+}
 
 /* ------------------------------------------------------------------ */
 /* Theme                                                              */
@@ -1477,3 +1481,63 @@ a.sidebar-cat:hover { color: var(--muted); }
 .align-center img,
 .align-center table,
 .align-center .page-figure { margin-left: auto; margin-right: auto; }
+
+/* ------------------------------------------------------------------ */
+/* Submit portal                                                      */
+/* ------------------------------------------------------------------ */
+#login-btn {border: 1px solid var(--fg); padding: 0.5rem 1rem }
+#login-btn:hover {border: 1px solid var(--fg); padding: 0.5rem 1rem; background-color: var(--fg); color: var(--bg) }
+#submit-btn {border: 1px solid var(--fg); padding: 0.5rem 1rem }
+#submit-btn:hover {border: 1px solid var(--fg); padding: 0.5rem 1rem; background-color: var(--fg); color: var(--bg) }
+.submit-page { align-items: stretch; max-width: 78rem; margin: 0 auto; }
+.submit-modal {
+  position: static;
+  width: 100%;
+  max-width: 76rem;
+  margin: 0 auto;
+}
+.submit-input {
+  background: none;
+  border: none;
+  color: inherit;
+  font: inherit;
+  padding: 0;
+  outline: none;
+}
+.submit-input::placeholder { color: var(--muted); }
+.submit-input--title { width: 100%; text-align: center; }
+.submit-input--inline { display: inline; width: auto; }
+.submit-input--wide { flex: 1 1 16ch; min-width: 12ch; }
+select.submit-input--inline { appearance: none; -webkit-appearance: none; -moz-appearance: none; }
+.submit-input--body {
+  display: block;
+  width: 100%;
+  resize: none;
+  margin-bottom: 0.5rem;
+}
+button.modal-meta-link {
+  background: none;
+  border: none;
+  padding: 0;
+  margin: 0;
+  font: inherit;
+  color: inherit;
+}
+.submit-modal .modal-media { height: auto; }
+.submit-modal .modal-media:not(:empty) { height: 8rem; }
+.modal-media-item { cursor: pointer; }
+.modal-media-item:hover { opacity: 0.6; }
+.modal-media-placeholder {
+  width: 8rem;
+  height: 8rem;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--bg-sunken);
+  border: 1px solid var(--muted);
+  color: var(--muted);
+  font-size: 2rem;
+  cursor: default;
+}
+.modal-media-placeholder:hover { opacity: 1; }
