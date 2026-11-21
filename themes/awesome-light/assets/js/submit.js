@@ -224,6 +224,56 @@
     return slug.replace(/[-_]+/g, " ").replace(/\b\w/g, function(c) { return c.toUpperCase(); }).trim();
   }
 
+  // ---- already-published check: if this repo is already a live listing, --
+  // ---- prefill from its index.md and submitting will update it instead ---
+  // ---- of the backend bailing with "already on the list" (add-submission --
+  // ---- .yml now updates in that case rather than refusing). -------------
+
+  function parsePublishedEntry(raw) {
+    var end = raw.indexOf("\n---", 4);
+    var fm = raw.slice(4, end);
+    var body = raw.slice(end + 4).replace(/^\s*\n/, "");
+
+    function scalar(key) {
+      var m = fm.match(new RegExp("^" + key + ":\\s*(.*)$", "m"));
+      return m ? m[1].trim().replace(/^"(.*)"$/, "$1") : "";
+    }
+
+    var images = [];
+    var imgSection = fm.match(/^images:\n((?:\s*-\s*.*\n?)*)/m);
+    if (imgSection) {
+      imgSection[1].split("\n").forEach(function(line) {
+        var m = line.match(/^\s*-\s*"?([^"\n]+)"?\s*$/);
+        if (m) images.push(m[1]);
+      });
+    }
+
+    return {
+      category: scalar("category"),
+      lightSdk: scalar("light_sdk") === "true",
+      description: scalar("description"),
+      images: images,
+      body: body.trim(),
+    };
+  }
+
+  function findPublishedEntry(parsed) {
+    var url = "https://github.com/" + parsed.owner + "/" + parsed.repo;
+    var q = encodeURIComponent("\"" + url + "\" in:file path:content/apps repo:" + REPO_OWNER + "/" + REPO_NAME);
+    return ghFetch("/search/code?q=" + q)
+      .then(function(result) {
+        var hit = result.items && result.items[0];
+        if (!hit) return null;
+        return ghFetch("/repos/" + REPO_OWNER + "/" + REPO_NAME + "/contents/" + hit.path + "?ref=main")
+          .then(function(file) {
+            var entry = parsePublishedEntry(atob(file.content.replace(/\n/g, "")));
+            entry.dirName = hit.path.split("/")[1];
+            return entry;
+          });
+      })
+      .catch(function() { return null; });
+  }
+
   el("fetch-btn").addEventListener("click", function() {
     var parsed = parseRepoUrl(el("repo-url-input").value);
     if (!parsed) {
@@ -231,43 +281,66 @@
       return;
     }
     var toast = createToast("Fetching...");
-    ghFetch("/repos/" + parsed.owner + "/" + parsed.repo)
-      .then(function(repoData) {
-        if (!el("name-input").value) el("name-input").value = humanize(repoData.name);
-        if (!el("description-input").value) el("description-input").value = repoData.description || "";
-        updatePreview();
 
-        return ghFetch("/repos/" + parsed.owner + "/" + parsed.repo + "/readme").then(function(readme) {
-          var text = atob(readme.content.replace(/\n/g, ""));
-          var readmeDir = readme.path.replace(/\/[^/]*$/, "");
-          if (readmeDir === readme.path) readmeDir = ""; // README is at repo root, no directory prefix
-          var found = [];
-          [MD_IMAGE_RE, IMG_TAG_RE].forEach(function(re) {
-            var m;
-            while ((m = re.exec(text))) found.push(m[1]);
+    findPublishedEntry(parsed)
+      .then(function(entry) {
+        return ghFetch("/repos/" + parsed.owner + "/" + parsed.repo)
+          .then(function(repoData) {
+            if (!el("name-input").value) el("name-input").value = humanize(repoData.name);
+            updatePreview();
+
+            if (entry) {
+              if (entry.category) el("category-input").value = entry.category;
+              lightSdk = entry.lightSdk;
+              el("light-sdk-toggle").textContent = "made with light sdk: " + (lightSdk ? "yes" : "no");
+              el("light-sdk-toggle").dataset.value = lightSdk ? "Yes" : "No";
+              if (!el("description-input").value) el("description-input").value = entry.description;
+              if (getLongDescriptionMarkdown().trim() === "") setLongDescriptionMarkdown(entry.body);
+              entry.images.forEach(function(ref) {
+                addScreenshot(/^https?:\/\//.test(ref)
+                  ? ref
+                  : "https://raw.githubusercontent.com/" + REPO_OWNER + "/" + REPO_NAME + "/main/content/apps/" + entry.dirName + "/" + ref);
+              });
+
+              toast.update("Found an existing listing for this app - editing it. Submitting will update it.");
+              toast.dismissAfter(3500);
+              return;
+            }
+
+            if (!el("description-input").value) el("description-input").value = repoData.description || "";
+
+            return ghFetch("/repos/" + parsed.owner + "/" + parsed.repo + "/readme").then(function(readme) {
+              var text = atob(readme.content.replace(/\n/g, ""));
+              var readmeDir = readme.path.replace(/\/[^/]*$/, "");
+              if (readmeDir === readme.path) readmeDir = ""; // README is at repo root, no directory prefix
+              var found = [];
+              [MD_IMAGE_RE, IMG_TAG_RE].forEach(function(re) {
+                var m;
+                while ((m = re.exec(text))) found.push(m[1]);
+              });
+              found
+                .filter(function(u) { return !BADGE_RE.test(u); })
+                .map(function(u) {
+                  if (/^https?:\/\//.test(u)) return u;
+                  var cleanPath = (readmeDir ? readmeDir + "/" : "") + u.replace(/^\.?\//, "");
+                  return "https://raw.githubusercontent.com/" + parsed.owner + "/" + parsed.repo + "/" + repoData.default_branch + "/" + cleanPath;
+                })
+                .filter(function(u, i, arr) { return arr.indexOf(u) === i; })
+                .slice(0, 12)
+                .forEach(addScreenshot);
+
+              var isLongDescEmpty = getLongDescriptionMarkdown().trim() === "";
+              if (isLongDescEmpty) {
+                var descText = text;
+                [MD_IMAGE_RE, IMG_TAG_FULL_RE].forEach(function(re) { descText = descText.replace(re, ""); });
+                descText = descText.replace(/\n{3,}/g, "\n\n").trim();
+                if (descText) setLongDescriptionMarkdown(descText);
+              }
+
+              toast.update("Fetched. Edit anything above before submitting.");
+              toast.dismissAfter(2500);
+            });
           });
-          found
-            .filter(function(u) { return !BADGE_RE.test(u); })
-            .map(function(u) {
-              if (/^https?:\/\//.test(u)) return u;
-              var cleanPath = (readmeDir ? readmeDir + "/" : "") + u.replace(/^\.?\//, "");
-              return "https://raw.githubusercontent.com/" + parsed.owner + "/" + parsed.repo + "/" + repoData.default_branch + "/" + cleanPath;
-            })
-            .filter(function(u, i, arr) { return arr.indexOf(u) === i; })
-            .slice(0, 12)
-            .forEach(addScreenshot);
-
-          var isLongDescEmpty = getLongDescriptionMarkdown().trim() === "";
-          if (isLongDescEmpty) {
-            var descText = text;
-            [MD_IMAGE_RE, IMG_TAG_FULL_RE].forEach(function(re) { descText = descText.replace(re, ""); });
-            descText = descText.replace(/\n{3,}/g, "\n\n").trim();
-            if (descText) setLongDescriptionMarkdown(descText);
-          }
-
-          toast.update("Fetched. Edit anything above before submitting.");
-          toast.dismissAfter(2500);
-        });
       })
       .catch(function(err) {
         toast.update("Couldn't fetch that repo (" + err.message + "). Make sure it's public.");

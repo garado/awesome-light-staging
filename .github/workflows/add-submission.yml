@@ -160,14 +160,23 @@ jobs:
               ref: "main",
             }).catch(() => ({ data: [] }));
 
-            if (Array.isArray(existing) && existing.some((e) => e.name === dirName)) {
-              await github.rest.issues.createComment({
+            const isUpdate = Array.isArray(existing) && existing.some((e) => e.name === dirName);
+
+            // Preserve the original date_added when updating an already-listed app,
+            // instead of resetting it to today.
+            let dateAdded = new Date().toISOString().slice(0, 10);
+            if (isUpdate) {
+              const { data: existingFile } = await github.rest.repos.getContent({
                 owner: context.repo.owner,
                 repo: context.repo.repo,
-                issue_number: context.issue.number,
-                body: `It looks like **${name}** by **${author}** is already on the list (\`${dirName}\`). If this is a mistake, let me know!`,
-              });
-              return;
+                path: entryPath,
+                ref: "main",
+              }).catch(() => ({ data: null }));
+              if (existingFile && existingFile.content) {
+                const existingText = Buffer.from(existingFile.content, "base64").toString("utf8");
+                const match = existingText.match(/^date_added:\s*"?([^"\n]+)"?\s*$/m);
+                if (match) dateAdded = match[1];
+              }
             }
 
             const branch = `submission/issue-${context.issue.number}`;
@@ -227,7 +236,6 @@ jobs:
             }
 
             const yamlStr = (s) => JSON.stringify(s);
-            const dateAdded = new Date().toISOString().slice(0, 10);
 
             const frontmatterLines = [
               "---",
@@ -273,7 +281,7 @@ jobs:
             const { data: newCommit } = await github.rest.git.createCommit({
               owner: context.repo.owner,
               repo: context.repo.repo,
-              message: `Add ${name} to the list`,
+              message: isUpdate ? `Update ${name}` : `Add ${name} to the list`,
               tree: newTree.sha,
               parents: [mainRef.object.sha],
             });
@@ -335,13 +343,15 @@ jobs:
               const { data: pr } = await github.rest.pulls.create({
                 owner: context.repo.owner,
                 repo: context.repo.repo,
-                title: `Add ${name}`,
+                title: isUpdate ? `Update ${name}` : `Add ${name}`,
                 head: branch,
                 base: "main",
-                body: `Adds **${name}** to the list.\n\nCloses #${context.issue.number}${failureNote}`,
+                body: isUpdate
+                  ? `Updates **${name}**'s listing.\n\nCloses #${context.issue.number}${failureNote}`
+                  : `Adds **${name}** to the list.\n\nCloses #${context.issue.number}${failureNote}`,
               });
 
-              await upsertBotComment(`Thanks for the submission! Opened #${pr.number} - a maintainer will review it shortly.${failureNote}`);
+              await upsertBotComment(`Thanks${isUpdate ? "" : " for the submission"}! Opened #${pr.number} - a maintainer will review it shortly.${failureNote}`);
             } else {
-              await upsertBotComment(`Thanks for the submission! Opened #${existingPrs.data[0].number} - a maintainer will review it shortly. Updated with your latest edits.${failureNote}`);
+              await upsertBotComment(`Thanks${isUpdate ? "" : " for the submission"}! Opened #${existingPrs.data[0].number} - a maintainer will review it shortly. Updated with your latest edits.${failureNote}`);
             }
