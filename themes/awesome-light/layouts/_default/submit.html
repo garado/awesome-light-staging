@@ -10,7 +10,7 @@
   <div id="signed-out" class="imf-controls-group imf-controls-group--center">
     <button id="login-btn" class="imf-btn imf-btn--primary">Sign in with GitHub</button>
   </div>
-  <p id="signed-out-hint" class="imf-hint">This uses read-only permissions (<code>public_repo</code> scope) to open and edit a submission issue as you.<br>It does not touch anything else on your account.</p>
+  <p id="signed-out-hint" class="imf-hint">This only grants read/write access to issues on this one repo, enough to open and edit a submission issue as you.<br>It can't touch anything else on your account.</p>
 
   <div id="signed-in" style="display:none; align-self:stretch;">
     <div class="modal-meta-row submit-modal" id="repo-url-row">
@@ -62,7 +62,7 @@
     <div class="imf-field">
       <label for="screenshot-url-input">Screenshots</label>
       <div class="imf-field-input-row">
-        <div class="sidebar-search" style="width: 26rem;">
+        <div class="sidebar-search" style="flex: 0 0 26rem;">
           <input type="text" id="screenshot-url-input" class="sidebar-search-input" placeholder="paste a screenshot URL">
         </div>
         <button id="add-screenshot-btn" class="imf-btn imf-btn--primary">
@@ -71,7 +71,7 @@
         </button>
       </div>
     </div>
-    <div id="readme-candidates" class="imf-chips" style="flex-direction: row; flex-wrap: wrap; display:none;"></div>
+    <div id="readme-candidates" class="imf-chips" style="flex-direction: row; flex-wrap: wrap; display:none; margin-top: 0.6rem;"></div>
     <p class="imf-hint">Click a screenshot above to remove it.</p>
 
     <p class="imf-hint">Signed in as <strong id="submit-login"></strong></p>

@@ -1,6 +1,6 @@
 (function() {
   // ---- fill in once the Worker is deployed ---------------------------------
-  var CLIENT_ID = "Ov23lifjO1KWm8keowOt";
+  var CLIENT_ID = "Iv23liEo88RcasuPcKqi";
   var WORKER_URL = "https://rough-limit-9460.alexisgarado.workers.dev";
   // ---------------------------------------------------------------------------
 
@@ -23,6 +23,25 @@
   var readmeCandidates = [];
   var lightSdk = false;
   var currentIssueNumber = new URLSearchParams(location.search).get("issue") || null;
+  var currentUserLogin = null;
+  var canEdit = true;
+
+  var EDIT_LOCK_FIELD_IDS = [
+    "name-input", "repo-url-input", "fetch-btn", "description-input",
+    "category-input", "light-sdk-toggle", "long-description-input",
+    "screenshot-url-input", "add-screenshot-btn",
+  ];
+
+  function lockForWrongAuthor(issueAuthor) {
+    canEdit = false;
+    EDIT_LOCK_FIELD_IDS.forEach(function(id) {
+      var node = el(id);
+      if (node.hasAttribute("contenteditable")) node.setAttribute("contenteditable", "false");
+      else node.disabled = true;
+    });
+    el("submit-btn").disabled = true;
+    showError("This submission belongs to " + issueAuthor + " - only they can edit it. You can still look around, but Submit is disabled.");
+  }
 
   function ghFetch(path, opts) {
     opts = opts || {};
@@ -45,7 +64,6 @@
     var url = new URL("https://github.com/login/oauth/authorize");
     url.searchParams.set("client_id", CLIENT_ID);
     url.searchParams.set("redirect_uri", REDIRECT_URI);
-    url.searchParams.set("scope", "public_repo");
     url.searchParams.set("state", state);
     location.href = url.toString();
   });
@@ -78,15 +96,20 @@
     el("signed-out").style.display = "none";
     el("signed-out-hint").style.display = "none";
     el("signed-in").style.display = "block";
+
+    var userPromise;
     if (token) {
-      ghFetch("/user").then(function(user) {
+      userPromise = ghFetch("/user").then(function(user) {
+        currentUserLogin = user.login;
         el("submit-login").textContent = user.login;
       });
     } else {
       el("submit-login").textContent = "(local preview, not signed in)";
+      userPromise = Promise.resolve();
     }
+
     if (currentIssueNumber) {
-      loadExistingIssue(currentIssueNumber);
+      userPromise.then(function() { loadExistingIssue(currentIssueNumber); });
     } else {
       renderScreenshots();
     }
@@ -168,8 +191,8 @@
 
       var img = document.createElement("img");
       img.src = url;
-      img.style.width = "2rem";
-      img.style.height = "2rem";
+      img.style.width = "6rem";
+      img.style.height = "6rem";
       img.style.objectFit = "cover";
       chip.appendChild(img);
 
@@ -187,8 +210,6 @@
     renderScreenshots();
   }
 
-  var PLACEHOLDER_COUNT = 3;
-
   function renderScreenshots() {
     var host = el("modal-media");
     host.innerHTML = "";
@@ -203,12 +224,6 @@
       });
       host.appendChild(img);
     });
-    for (var i = screenshots.length; i < PLACEHOLDER_COUNT; i++) {
-      var placeholder = document.createElement("span");
-      placeholder.className = "modal-media-item modal-media-placeholder";
-      placeholder.textContent = "?";
-      host.appendChild(placeholder);
-    }
     updatePreview();
     updateSubmitEnabled();
   }
@@ -537,7 +552,8 @@
   })();
 
   function updateSubmitEnabled() {
-    var ok = el("name-input").value.trim() &&
+    var ok = canEdit &&
+      el("name-input").value.trim() &&
       el("category-input").value &&
       el("description-input").value.trim() &&
       screenshots.length > 0;
@@ -546,7 +562,7 @@
 
   // ---- building and sending the issue -------------------------------------
 
-  function buildBody() {
+  function buildBody(issueNumber) {
     var lines = [];
     lines.push("### App name", "", el("name-input").value.trim(), "");
     lines.push("### Repository URL", "", el("repo-url-input").value.trim(), "");
@@ -555,6 +571,9 @@
     lines.push("### Short description", "", el("description-input").value.trim(), "");
     lines.push("### Long description", "", getLongDescriptionMarkdown().trim() || "_No response_", "");
     lines.push("### Screenshots", "", screenshots.join("\n"), "");
+    if (issueNumber) {
+      lines.push("### Edit this submission", "", REDIRECT_URI + "?issue=" + issueNumber, "");
+    }
     return lines.join("\n");
   }
 
@@ -584,6 +603,10 @@
         updatePreview();
         el("submit-btn").textContent = "Update submission";
         el("submit-result").innerHTML = 'Editing <a href="' + issue.html_url + '" target="_blank">issue #' + number + "</a>.";
+
+        if (token && currentUserLogin && issue.user && issue.user.login !== currentUserLogin) {
+          lockForWrongAuthor(issue.user.login);
+        }
       })
       .catch(function(err) {
         showError("Couldn't load issue #" + number + " (" + err.message + ").");
@@ -594,7 +617,7 @@
     el("submit-btn").disabled = true;
     var payload = {
       title: (currentIssueNumber ? "" : "New submission: ") + el("name-input").value.trim(),
-      body: buildBody(),
+      body: buildBody(currentIssueNumber),
       labels: ["submission"],
     };
 
@@ -610,10 +633,21 @@
 
     req
       .then(function(issue) {
+        var isNew = !currentIssueNumber;
         currentIssueNumber = issue.number;
         history.replaceState({}, "", REDIRECT_URI + "?issue=" + issue.number);
-        el("submit-result").innerHTML = 'Done - <a href="' + issue.html_url + '" target="_blank">view issue #' + issue.number + "</a>. A bot will open a PR shortly; come back to this page to edit before it's reviewed.";
-        el("submit-btn").textContent = "Update submission";
+
+        var finish = isNew
+          ? ghFetch("/repos/" + REPO_OWNER + "/" + REPO_NAME + "/issues/" + issue.number, {
+            method: "PATCH",
+            body: JSON.stringify({ body: buildBody(issue.number) }),
+          })
+          : Promise.resolve();
+
+        return finish.then(function() {
+          el("submit-result").innerHTML = 'Done - <a href="' + issue.html_url + '" target="_blank">view issue #' + issue.number + "</a>. A bot will open a PR shortly; come back to this page to edit before it's reviewed.";
+          el("submit-btn").textContent = "Update submission";
+        });
       })
       .catch(function(err) {
         showError("Couldn't submit (" + err.message + ").");
