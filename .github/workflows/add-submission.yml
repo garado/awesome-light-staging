@@ -58,7 +58,7 @@ jobs:
               .filter(Boolean)
               // ignore the <details>/<summary> wrapper we add below, in case this body was already collapsed
               .filter((s) => !/^<\/?details>$/i.test(s) && !/^<summary>/i.test(s));
-            const lightSdk = field("Built with the Light SDK?") === "Yes";
+            const lightSdkField = field("Built with the Light SDK?");
 
             if (name) {
               const desiredTitle = `[Submission]: Add ${name}`;
@@ -96,9 +96,8 @@ jobs:
             const missing = [];
             if (!name) missing.push("App name");
             if (!repoUrl) missing.push("Repository URL");
+            else if (!author) missing.push("Repository URL (must be a github.com/owner/repo link)");
             if (!category) missing.push("Category");
-            if (!description) missing.push("Short description");
-            if (screenshotLines.length === 0) missing.push("Screenshots");
 
             if (missing.length) {
               await github.rest.issues.createComment({
@@ -120,16 +119,126 @@ jobs:
               description,
               longDescription,
               screenshotLines,
-              lightSdk,
+              lightSdkField,
             }));
             core.setOutput("proceed", "true");
 
-      - name: Resolve screenshot URLs
+      - name: Auto-fill from repo
+        id: autofill
         if: steps.extract.outputs.proceed == 'true'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require("fs");
+            const submission = JSON.parse(fs.readFileSync("submission.json", "utf8"));
+            const { repoUrl, author, lightSdkField } = submission;
+
+            const repoMatch = repoUrl.match(/^https:\/\/github\.com\/([^/]+)\/([^/]+)\/?$/);
+            if (!repoMatch) {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: context.issue.number,
+                body: `Couldn't parse **${repoUrl}** as a \`github.com/owner/repo\` URL. Please edit the issue with a direct link to the repo and it will retry automatically.`,
+              });
+              core.setOutput("proceed", "false");
+              return;
+            }
+            const [, owner, repo] = repoMatch;
+
+            let repoData;
+            try {
+              ({ data: repoData } = await github.rest.repos.get({ owner, repo }));
+            } catch (err) {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: context.issue.number,
+                body: `Couldn't fetch **${repoUrl}** (${err.status || err.message}). Make sure the repo exists and is public, then edit the issue to retry.`,
+              });
+              core.setOutput("proceed", "false");
+              return;
+            }
+
+            const autoFilled = [];
+
+            if (!submission.description) {
+              submission.description = (repoData.description || "").trim();
+              if (submission.description) autoFilled.push("Short description (from the repo's GitHub description)");
+            }
+
+            if (lightSdkField === "Yes") {
+              submission.lightSdk = true;
+            } else if (lightSdkField === "No") {
+              submission.lightSdk = false;
+            } else {
+              let usesLightSdk = false;
+              try {
+                const { data: pkgFile } = await github.rest.repos.getContent({ owner, repo, path: "package.json" });
+                const pkgText = Buffer.from(pkgFile.content, "base64").toString("utf8");
+                usesLightSdk = /@lightphone\/sdk/.test(pkgText);
+              } catch {}
+              submission.lightSdk = usesLightSdk;
+              autoFilled.push(`Light SDK usage (auto-detected: ${usesLightSdk ? "yes" : "no"})`);
+            }
+
+            if (submission.screenshotLines.length === 0) {
+              const BADGE_RE = /badge|shields\.io|badgen\.net|codecov|coveralls|\.svg(?:[?#]|$)/i;
+              const MD_IMAGE_RE = /!\[[^\]]*\]\(\s*"?([^"\s)]+)"?(?:\s+"[^"]*")?\s*\)/g;
+              const IMG_TAG_RE = /<img\b[^>]*?(?:src|href)\s*=\s*["']([^"']+)["']/gi;
+
+              try {
+                const { data: readme } = await github.rest.repos.getReadme({ owner, repo });
+                const readmeText = Buffer.from(readme.content, "base64").toString("utf8");
+
+                const found = [];
+                for (const re of [MD_IMAGE_RE, IMG_TAG_RE]) {
+                  for (const match of readmeText.matchAll(re)) {
+                    found.push(match[1]);
+                  }
+                }
+
+                const resolved = found
+                  .filter((url) => !BADGE_RE.test(url))
+                  .map((url) => {
+                    if (/^https?:\/\//.test(url)) return url;
+                    const cleanPath = url.replace(/^\.?\//, "");
+                    return `https://raw.githubusercontent.com/${owner}/${repo}/${repoData.default_branch}/${cleanPath}`;
+                  })
+                  .slice(0, 6);
+
+                if (resolved.length) {
+                  submission.screenshotLines = resolved;
+                  autoFilled.push(`Screenshots (${resolved.length} found in the repo's README)`);
+                }
+              } catch {}
+            }
+
+            const missing = [];
+            if (!submission.description) missing.push("Short description (the repo has no GitHub description to fall back on)");
+            if (submission.screenshotLines.length === 0) missing.push("Screenshots (no images found in the repo's README)");
+
+            if (missing.length) {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: context.issue.number,
+                body: `Couldn't auto-fill everything for this submission - please fill in the following field(s) manually and it will retry automatically: ${missing.join(", ")}.`,
+              });
+              core.setOutput("proceed", "false");
+              return;
+            }
+
+            submission.autoFilled = autoFilled;
+            fs.writeFileSync("submission.json", JSON.stringify(submission));
+            core.setOutput("proceed", "true");
+
+      - name: Resolve screenshot URLs
+        if: steps.autofill.outputs.proceed == 'true'
         run: python3 .github/scripts/resolve_screenshots.py
 
       - name: Open or update PR
-        if: steps.extract.outputs.proceed == 'true'
+        if: steps.autofill.outputs.proceed == 'true'
         uses: actions/github-script@v7
         with:
           script: |
@@ -143,6 +252,7 @@ jobs:
               longDescription,
               lightSdk,
               screenshots,
+              autoFilled,
             } = JSON.parse(require("fs").readFileSync("submission.json", "utf8"));
 
             const slug = name
@@ -331,6 +441,10 @@ jobs:
               ? `\n\n<details>\n<summary>Couldn't download ${downloadFailures.length} screenshot(s), so they are linked externally instead of committed</summary>\n\n${downloadFailures.map((u) => `- ${u}`).join("\n")}\n\n</details>`
               : "";
 
+            const autoFillNote = autoFilled && autoFilled.length
+              ? `\n\n<details>\n<summary>Auto-filled from the repo</summary>\n\n${autoFilled.map((f) => `- ${f}`).join("\n")}\n\n</details>`
+              : "";
+
             if (existingPrs.data.length === 0) {
               const { data: pr } = await github.rest.pulls.create({
                 owner: context.repo.owner,
@@ -338,10 +452,10 @@ jobs:
                 title: `Add ${name}`,
                 head: branch,
                 base: "main",
-                body: `Adds **${name}** to the list.\n\nCloses #${context.issue.number}${failureNote}`,
+                body: `Adds **${name}** to the list.\n\nCloses #${context.issue.number}${failureNote}${autoFillNote}`,
               });
 
-              await upsertBotComment(`Thanks for the submission! Opened #${pr.number} - a maintainer will review it shortly.${failureNote}`);
+              await upsertBotComment(`Thanks for the submission! Opened #${pr.number} - a maintainer will review it shortly.${failureNote}${autoFillNote}`);
             } else {
-              await upsertBotComment(`Thanks for the submission! Opened #${existingPrs.data[0].number} - a maintainer will review it shortly. Updated with your latest edits.${failureNote}`);
+              await upsertBotComment(`Thanks for the submission! Opened #${existingPrs.data[0].number} - a maintainer will review it shortly. Updated with your latest edits.${failureNote}${autoFillNote}`);
             }

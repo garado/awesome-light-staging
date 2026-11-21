@@ -3,20 +3,19 @@ description: Submit your Light Phone app or tool to be added to the list.
 title: "[Submission]: "
 labels: ["submission"]
 body:
-  - type: input
-    id: name
+  - type: markdown
     attributes:
-      label: App name
-      description: The name of your app
-      placeholder: Luma
-    validations:
-      required: true
+      value: |
+        Only the repository URL, category, and app name are required.
+
+        Leave the rest blank and a bot will try to fill it in from your repo.
+        Override any of it below if you'd rather set it yourself.
 
   - type: input
     id: repo_url
     attributes:
       label: Repository URL
-      description: Link to the app's GitHub repository
+      description: Link to the app's public GitHub repository
       placeholder: https://github.com/username/app-name
     validations:
       required: true
@@ -41,25 +40,23 @@ body:
     validations:
       required: true
 
-  - type: dropdown
-    id: light_sdk
+  - type: input
+    id: name
     attributes:
-      label: Built with the Light SDK?
-      options:
-        - "No"
-        - "Yes"
-      default: 0
+      label: App name
+      description: The name of your app
+      placeholder: Luma
     validations:
-      required: false
+      required: true
 
   - type: textarea
     id: description
     attributes:
       label: Short description
-      description: One sentence describing the app, shown in the list view
+      description: One sentence describing the app, shown in the list view. Leave blank to use the repository's GitHub description.
       placeholder: A minimal launcher for the Light Phone III.
     validations:
-      required: true
+      required: false
 
   - type: textarea
     id: long_description
@@ -70,13 +67,26 @@ body:
     validations:
       required: false
 
+  - type: dropdown
+    id: light_sdk
+    attributes:
+      label: Built with the Light SDK?
+      description: Leave as "Auto-detect" and the bot will check your repo's package.json for a dependency on the Light SDK.
+      options:
+        - "Auto-detect"
+        - "Yes"
+        - "No"
+      default: 0
+    validations:
+      required: false
+
   - type: textarea
     id: screenshots
     attributes:
       label: Screenshots
-      description: Add showcase images for your app, in the order they should be displayed (the first is used as the cover/thumbnail). Input direct image URLs or drag images into this textbox. A bot will parse this for image links, download them, and include the images directly in the PR.
+      description: Optional - add showcase images for your app, in the order they should be displayed (the first is used as the cover/thumbnail). Input direct image URLs or drag images into this textbox. Leave blank and the bot will try pulling images out of your repo's README instead.
       placeholder: |
         https://github.com/user-attachments/assets/...
         https://github.com/user-attachments/assets/...
     validations:
-      required: true
+      required: false
