@@ -120,8 +120,10 @@
       if (node.hasAttribute("contenteditable")) node.setAttribute("contenteditable", "false");
       else node.disabled = true;
     });
-    el("long-description-editor").style.pointerEvents = "none";
-    el("long-description-editor").style.opacity = "0.6";
+    var longDescNode = document.querySelector(".long-description-editor");
+    longDescNode.style.pointerEvents = "none";
+    longDescNode.style.opacity = "0.6";
+    if (longDescNode.disabled !== undefined) longDescNode.disabled = true;
     el("submit-btn").disabled = true;
     showError("This submission belongs to " + issueAuthor + " - only they can edit it. You can still look around, but Submit is disabled.");
   }
@@ -504,42 +506,77 @@
   // Tiptap doesn't ship a single-file browser build the way Toast UI did.
 
   var longDescEditor = null;
+  var longDescFallback = null; // plain <textarea>, used only if Tiptap fails to load
   var pendingLongDescMarkdown = null;
+  var LONG_DESC_PLACEHOLDER = "Longer description to show in the popup. If left blank, it reuses the one-sentence summary.";
+
+  // jsDelivr, not esm.sh: it resolves each package's dependency versions
+  // deterministically at build time (no range-guessing across requests), so
+  // all four packages land on the exact same @tiptap/core without needing
+  // esm.sh's ?deps= override hack. 2.2.4 (not latest) because that's the
+  // @tiptap/core version tiptap-markdown itself actually resolves to.
+  var TIPTAP_CORE_VERSION = "2.2.4";
+  var MARKDOWN_EXT_VERSION = "0.8.10";
+
+  function loadTiptapModules() {
+    return Promise.all([
+      import("https://cdn.jsdelivr.net/npm/@tiptap/core@" + TIPTAP_CORE_VERSION + "/+esm"),
+      import("https://cdn.jsdelivr.net/npm/@tiptap/starter-kit@" + TIPTAP_CORE_VERSION + "/+esm"),
+      import("https://cdn.jsdelivr.net/npm/@tiptap/extension-placeholder@" + TIPTAP_CORE_VERSION + "/+esm"),
+      import("https://cdn.jsdelivr.net/npm/tiptap-markdown@" + MARKDOWN_EXT_VERSION + "/+esm"),
+    ]);
+  }
+
+  function useFallbackTextarea() {
+    if (longDescFallback) return;
+    var textarea = document.createElement("textarea");
+    textarea.id = "long-description-input";
+    textarea.className = "submit-input submit-input--body modal-body long-description-editor";
+    textarea.rows = 4;
+    textarea.placeholder = LONG_DESC_PLACEHOLDER + " (plain text - the rich editor failed to load)";
+    textarea.value = pendingLongDescMarkdown || "";
+    el("long-description-editor").replaceWith(textarea);
+    longDescFallback = textarea;
+  }
 
   (async function initLongDescEditor() {
-    var TIPTAP_VERSION = "2.9.1";
-    var MARKDOWN_EXT_VERSION = "0.8.10";
-    // ?deps= pins every package's @tiptap/core to the same exact version -
-    // without it, esm.sh resolves each package's own peer-range separately
-    // and you end up with multiple distinct copies of @tiptap/core, which
-    // breaks Tiptap's extension registration (it does identity checks).
-    var CORE_PIN = "?deps=@tiptap/core@" + TIPTAP_VERSION;
-    var [{ Editor }, { default: StarterKit }, { default: Placeholder }, { Markdown }] = await Promise.all([
-      import("https://esm.sh/@tiptap/core@" + TIPTAP_VERSION),
-      import("https://esm.sh/@tiptap/starter-kit@" + TIPTAP_VERSION + CORE_PIN),
-      import("https://esm.sh/@tiptap/extension-placeholder@" + TIPTAP_VERSION + CORE_PIN),
-      import("https://esm.sh/tiptap-markdown@" + MARKDOWN_EXT_VERSION + CORE_PIN),
-    ]);
+    var modules;
+    try {
+      modules = await loadTiptapModules();
+    } catch (err) {
+      try {
+        modules = await loadTiptapModules(); // one retry - transient CDN hiccups happen
+      } catch (err2) {
+        console.error("Rich text editor failed to load, falling back to plain text:", err2);
+        useFallbackTextarea();
+        return;
+      }
+    }
+
+    var Editor = modules[0].Editor;
+    var StarterKit = modules[1].default;
+    var Placeholder = modules[2].default;
+    var Markdown = modules[3].Markdown;
 
     longDescEditor = new Editor({
       element: el("long-description-editor"),
       extensions: [
         StarterKit,
         Markdown.configure({ html: false }),
-        Placeholder.configure({
-          placeholder: "Longer description to show in the popup. If left blank, it reuses the one-sentence summary.",
-        }),
+        Placeholder.configure({ placeholder: LONG_DESC_PLACEHOLDER }),
       ],
       content: pendingLongDescMarkdown || "",
     });
   })();
 
   function setLongDescriptionMarkdown(text) {
+    if (longDescFallback) { longDescFallback.value = text || ""; return; }
     if (!longDescEditor) { pendingLongDescMarkdown = text || ""; return; }
     longDescEditor.commands.setContent(text || "");
   }
 
   function getLongDescriptionMarkdown() {
+    if (longDescFallback) return longDescFallback.value;
     return longDescEditor ? longDescEditor.storage.markdown.getMarkdown() : (pendingLongDescMarkdown || "");
   }
 
