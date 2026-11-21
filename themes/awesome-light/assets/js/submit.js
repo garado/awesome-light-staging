@@ -18,6 +18,71 @@
     box.style.display = "block";
   };
 
+  // A real damped mass-spring-damper simulation (not a fixed easing curve) -
+  // this is what gives UIKit-style motion its slight overshoot-then-settle
+  // feel, which cubic-bezier can only ever approximate for one specific
+  // distance/duration combination.
+  function animateSpring(opts) {
+    var pos = opts.from;
+    var vel = 0;
+    var target = opts.to;
+    var stiffness = opts.stiffness;
+    var damping = opts.damping;
+    var mass = opts.mass || 1;
+    var lastTime = null;
+
+    function frame(now) {
+      if (lastTime === null) lastTime = now;
+      var dt = Math.min((now - lastTime) / 1000, 1 / 30);
+      lastTime = now;
+
+      var accel = (-stiffness * (pos - target) - damping * vel) / mass;
+      vel += accel * dt;
+      pos += vel * dt;
+      opts.onUpdate(pos);
+
+      if (Math.abs(pos - target) < 0.01 && Math.abs(vel) < 0.01) {
+        opts.onUpdate(target);
+        if (opts.onComplete) opts.onComplete();
+        return;
+      }
+      requestAnimationFrame(frame);
+    }
+    requestAnimationFrame(frame);
+  }
+
+  function showToast(msg) {
+    var host = document.getElementById("toast-host");
+    if (!host) {
+      host = document.createElement("div");
+      host.id = "toast-host";
+      document.body.appendChild(host);
+    }
+    var toast = document.createElement("div");
+    toast.className = "toast";
+    toast.textContent = msg;
+    host.appendChild(toast);
+
+    var state = { y: 24, opacity: 0 };
+    function render() {
+      toast.style.transform = "translateY(" + state.y + "px)";
+      toast.style.opacity = state.opacity;
+    }
+    render();
+
+    animateSpring({ from: 24, to: 0, stiffness: 300, damping: 26, onUpdate: function(y) { state.y = y; render(); } });
+    animateSpring({ from: 0, to: 1, stiffness: 300, damping: 34, onUpdate: function(o) { state.opacity = o; render(); } });
+
+    setTimeout(function() {
+      animateSpring({
+        from: state.y, to: 24, stiffness: 300, damping: 30,
+        onUpdate: function(y) { state.y = y; render(); },
+        onComplete: function() { toast.remove(); },
+      });
+      animateSpring({ from: state.opacity, to: 0, stiffness: 300, damping: 34, onUpdate: function(o) { state.opacity = o; render(); } });
+    }, 2500);
+  }
+
   var token = sessionStorage.getItem("gh_token");
   var screenshots = [];
   var readmeCandidates = [];
@@ -131,6 +196,7 @@
   var BADGE_RE = /badge|shields\.io|badgen\.net|codecov|coveralls|\.svg(?:[?#]|$)/i;
   var MD_IMAGE_RE = /!\[[^\]]*\]\(\s*"?([^"\s)]+)"?(?:\s+"[^"]*")?\s*\)/g;
   var IMG_TAG_RE = /<img\b[^>]*?(?:src|href)\s*=\s*["']([^"']+)["']/gi;
+  var IMG_TAG_FULL_RE = /<img\b[^>]*\/?>/gi;
 
   function parseRepoUrl(url) {
     var m = (url || "").trim().replace(/\/+$/, "").match(/^https:\/\/github\.com\/([^/]+)\/([^/]+)$/);
@@ -144,7 +210,7 @@
   el("fetch-btn").addEventListener("click", function() {
     var parsed = parseRepoUrl(el("repo-url-input").value);
     if (!parsed) {
-      el("fetch-status").textContent = "Invalid URL.";
+      showToast("That doesn't look like a github.com/owner/repo URL.");
       return;
     }
     el("fetch-status").textContent = "Fetching...";
@@ -173,7 +239,18 @@
             .filter(function(u, i, arr) { return arr.indexOf(u) === i; })
             .slice(0, 12);
           renderCandidates();
-          el("fetch-status").textContent = "Fetched. Edit anything above before submitting.";
+
+          var longDescEl = el("long-description-input");
+          var isLongDescEmpty = longDescEl.textContent.replace(/​/g, "").trim() === "";
+          if (isLongDescEmpty) {
+            var descText = text;
+            [MD_IMAGE_RE, IMG_TAG_FULL_RE].forEach(function(re) { descText = descText.replace(re, ""); });
+            descText = descText.replace(/\n{3,}/g, "\n\n").trim();
+            if (descText) setLongDescriptionMarkdown(descText);
+          }
+
+          el("fetch-status").textContent = "";
+          showToast("Fetched. Edit anything above before submitting.");
         });
       })
       .catch(function(err) {
@@ -282,7 +359,14 @@
     var lines = (text || "").replace(/\r\n/g, "\n").split("\n");
     var html = [];
     var listType = null;
+    var paragraph = [];
 
+    function flushParagraph() {
+      if (paragraph.length) {
+        html.push("<p>" + renderInline(paragraph.join(" ")) + "</p>");
+        paragraph = [];
+      }
+    }
     function closeList() {
       if (listType) { html.push("</" + listType + ">"); listType = null; }
     }
@@ -295,25 +379,31 @@
       var quote = trimmed.match(/^>\s?(.*)$/);
 
       if (!trimmed) {
+        flushParagraph();
         closeList();
       } else if (heading) {
+        flushParagraph();
         closeList();
         var level = Math.min(heading[1].length + 2, 6); // keep below the card's own <h1>/<h2>
         html.push("<h" + level + ">" + renderInline(heading[2]) + "</h" + level + ">");
       } else if (bullet) {
+        flushParagraph();
         if (listType !== "ul") { closeList(); html.push("<ul>"); listType = "ul"; }
         html.push("<li>" + renderInline(bullet[1]) + "</li>");
       } else if (numbered) {
+        flushParagraph();
         if (listType !== "ol") { closeList(); html.push("<ol>"); listType = "ol"; }
         html.push("<li>" + renderInline(numbered[1]) + "</li>");
       } else if (quote) {
+        flushParagraph();
         closeList();
         html.push("<blockquote>" + renderInline(quote[1]) + "</blockquote>");
       } else {
         closeList();
-        html.push("<p>" + renderInline(trimmed) + "</p>");
+        paragraph.push(trimmed);
       }
     });
+    flushParagraph();
     closeList();
     return html.join("\n") || "<p><br></p>";
   }
@@ -374,7 +464,9 @@
   }
 
   function setLongDescriptionMarkdown(text) {
-    el("long-description-input").innerHTML = markdownToHtml(text);
+    var editor = el("long-description-input");
+    editor.innerHTML = markdownToHtml(text);
+    editor.classList.toggle("is-empty", editor.textContent.replace(/​/g, "").trim() === "");
   }
 
   function getLongDescriptionMarkdown() {
@@ -442,40 +534,48 @@
     var node = range.startContainer;
     if (node.nodeType !== Node.TEXT_NODE) return;
 
-    var block = node.parentNode;
-    if (block.childNodes.length !== 1 || block.firstChild !== node) return;
-    if (block === editorEl || !editorEl.contains(block)) return;
+    var parent = node.parentNode;
+    if (!editorEl.contains(parent)) return;
+    if (parent.childNodes.length !== 1 || parent.firstChild !== node) return;
     if (range.startOffset !== node.textContent.length) return;
 
-    var text = node.textContent;
+    // Fresh blocks are seeded with a zero-width-space caret anchor - strip it
+    // before matching, or "- " etc. never matches at the start of the string.
+    var text = node.textContent.replace(/^​/, "");
     var bullet = text.match(/^[-*]\s$/);
     var numbered = text.match(/^\d+\.\s$/);
     var heading = text.match(/^(#{1,6})\s$/);
     var quote = text.match(/^>\s$/);
     if (!bullet && !numbered && !heading && !quote) return;
 
-    var targetParent = block.parentNode;
+    // The very first line (before any Enter) has no wrapping block yet - the
+    // text node sits directly in the editor root. Handle that the same way,
+    // just operating on the loose text node instead of a wrapping element.
+    var isRoot = parent === editorEl;
+    var targetParent = isRoot ? editorEl : parent.parentNode;
+    var insertBeforeRef = isRoot ? node : parent;
+    var toRemove = isRoot ? node : parent;
     var newBlock;
 
     if (bullet || numbered) {
       var listType = bullet ? "ul" : "ol";
-      var prev = block.previousSibling;
+      var prev = insertBeforeRef.previousSibling;
       var list = (prev && prev.nodeType === Node.ELEMENT_NODE && prev.tagName.toLowerCase() === listType)
         ? prev
-        : targetParent.insertBefore(document.createElement(listType), block);
+        : targetParent.insertBefore(document.createElement(listType), insertBeforeRef);
       newBlock = document.createElement("li");
       list.appendChild(newBlock);
     } else if (heading) {
       newBlock = document.createElement("h" + Math.min(heading[1].length + 2, 6));
-      targetParent.insertBefore(newBlock, block);
+      targetParent.insertBefore(newBlock, insertBeforeRef);
     } else {
       newBlock = document.createElement("blockquote");
-      targetParent.insertBefore(newBlock, block);
+      targetParent.insertBefore(newBlock, insertBeforeRef);
     }
 
     var textNode = document.createTextNode("​");
     newBlock.appendChild(textNode);
-    targetParent.removeChild(block);
+    targetParent.removeChild(toRemove);
 
     var newRange = document.createRange();
     newRange.setStart(textNode, textNode.textContent.length);
