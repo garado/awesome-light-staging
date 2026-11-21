@@ -5,7 +5,7 @@
 
   <p id="submit-error" class="imf-hint" style="display:none;"></p>
 
-  <div id="signed-out" class="imf-controls-group--center">
+  <div id="signed-out" class="imf-controls-group imf-controls-group--center">
     <button id="login-btn" class="imf-btn imf-btn--primary">Sign in with GitHub</button>
   </div>
   <p id="signed-out-hint" class="imf-hint">Asks for the <code>public_repo</code> scope only - enough to open and edit a submission issue as you. Nothing else on your account is touched.</p>
@@ -64,7 +64,7 @@
 
     <p class="imf-hint">Signed in as <strong id="submit-login"></strong></p>
 
-    <div class="imf-controls-group--center">
+    <div class="imf-controls-group imf-controls-group--center">
       <button id="submit-btn" class="imf-btn imf-btn--primary" disabled>Open submission</button>
     </div>
     <p id="submit-result" class="imf-hint"></p>
@@ -96,8 +96,8 @@
   .submit-input--title:hover, .submit-input--title:focus { border-bottom-color: var(--muted); }
   .submit-input--inline { display: inline; width: auto; border-bottom: 1px solid transparent; }
   .submit-input--inline:hover, .submit-input--inline:focus { border-bottom-color: var(--muted); }
-  .submit-input--wide { min-width: 22ch; }
-  select.submit-input--inline { appearance: none; -webkit-appearance: none; }
+  .submit-input--wide { flex: 1 1 16ch; min-width: 12ch; }
+  select.submit-input--inline { appearance: none; -webkit-appearance: none; -moz-appearance: none; }
   .submit-input--body {
     display: block;
     width: 100%;
@@ -106,8 +106,16 @@
     margin-bottom: 0.5rem;
   }
   .submit-input--body:hover, .submit-input--body:focus { border-bottom-color: var(--muted); }
-  .modal-media:empty { height: 8rem; border: 1px dashed var(--muted); display: flex; align-items: center; justify-content: center; }
-  .modal-media:empty::after { content: "add screenshots below"; color: var(--muted); }
+  button.modal-meta-link {
+    background: none;
+    border: none;
+    padding: 0;
+    margin: 0;
+    font: inherit;
+    color: inherit;
+  }
+  .submit-modal .modal-media { height: auto; }
+  .submit-modal .modal-media:not(:empty) { height: 8rem; }
   .modal-media-item { cursor: pointer; }
   .modal-media-item:hover { opacity: 0.6; }
 </style>
@@ -121,7 +129,10 @@
 
   var REPO_OWNER = "garado";
   var REPO_NAME = "awesome-light-staging";
-  var REDIRECT_URI = location.origin + location.pathname;
+  // Must exactly match the callback URL registered on the GitHub OAuth App -
+  // hardcoded (not derived from location) since Hugo serves this page with a
+  // trailing slash and a mismatch here is a hard GitHub-side rejection.
+  var REDIRECT_URI = "https://awesome-light-staging.garado.dev/submit/";
 
   var el = function (id) { return document.getElementById(id); };
   var showError = function (msg) {
@@ -139,9 +150,8 @@
   function ghFetch(path, opts) {
     opts = opts || {};
     opts.headers = Object.assign({
-      Authorization: "token " + token,
       Accept: "application/vnd.github+json",
-    }, opts.headers || {});
+    }, token ? { Authorization: "token " + token } : {}, opts.headers || {});
     return fetch("https://api.github.com" + path, opts).then(function (res) {
       return res.json().then(function (data) {
         if (!res.ok) throw new Error(data.message || ("GitHub API error " + res.status));
